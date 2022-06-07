@@ -20,54 +20,53 @@ public class SlimeBehaviour : MonoBehaviour
     }
     [Header("ConnectedScripts")]
     [SerializeField] private Rigidbody2D m_rgdbdSlime;
-    [SerializeField] private UnityEngine.AI.NavMeshAgent m_NavMeshAgent;
+    //[SerializeField] private UnityEngine.AI.NavMeshAgent m_NavMeshAgent;
     [SerializeField] private Animator m_Animator = null;
 
     [Header("Settings")]
-    [SerializeField] private float m_fMoveSpeed = 0.5f;
-    [SerializeField] private float m_fAcceleration = 1.0f;
-    [SerializeField] private float m_fMoveDistance = 1.0f;
-    [SerializeField] private float m_fChargeForce = 0.25f;
-    [SerializeField] private float m_fIdleTime = 2.0f;
-    [SerializeField] private float m_fFriendSearchRadius = 2.0f;
-    [SerializeField] private int m_iMaxSearchTries = 30;
-    [SerializeField] private float m_fDeathAnimLength = 1.2f;
-    [SerializeField] private float m_fAttackDuraation = 1.5f;
+    [SerializeField] private float m_fMoveSpeed = 0.2f;
+    //[SerializeField] private float m_fAcceleration = 1.0f;
+    //[SerializeField] private float m_fMoveDistance = 1.0f;
+    //[SerializeField] private float m_fChargeForce = 0.25f;
+    //[SerializeField] private float m_fIdleTime = 2.0f;
+    //[SerializeField] private int m_iMaxSearchTries = 30;
+    //[SerializeField] private float m_fDeathAnimLength = 1.2f;
+    //[SerializeField] private float m_fAttackDuration = 1.5f;
 
     [Header("Debug")]
     [SerializeField] private STATE m_eCurrentState = STATE.IDLE;
-    [SerializeField] private float m_fMass = 1.0f;
-    //[SerializeField] private Vector2 m_v2CurrentPosition = Vector2.zero;
     [SerializeField] private Vector2 m_v2CurrentVelocity = Vector2.zero;
     [SerializeField] private Vector2 m_v2CurrentFacing = Vector2.zero;
     [SerializeField] private Vector2 m_v2TargetPosition = Vector2.zero;
     [SerializeField] private float m_fDelayCounter = 0.0f;
+    [SerializeField] private float m_fWanderCounter = 0.0f;
     [SerializeField] private float m_fCurrentSpeed = 0.0f;
     [SerializeField] private float m_fCurrentAccel = 0.0f;
     [SerializeField] private bool m_bIsPlayerControlled = false;
     [SerializeField] private bool m_bDangerNearby = false;
     [SerializeField] private bool m_bAnimatorAttached = false;
-    [SerializeField] private GameObject m_objPlayer;
     [SerializeField] private LayerMask m_maskSlimes;
 
     [Header("Constants")]
-    [SerializeField] private const float m_fMaxSpeed = 0.25f;
-    [SerializeField] private const float m_fMaxWanderSpeed = 0.1f;
-    [SerializeField] private const float m_fMaxWanderForce = 2.0f;
-    [SerializeField] private const float m_fMaxForce = 0.025f;
-    [SerializeField] private const float m_fFleeDistance = 100.0f;
-    [SerializeField] private const float m_fBrakeDistance = 150.0f;
-    [SerializeField] private const float m_fWanderDistance = 50.0f;
-    [SerializeField] private const float m_fWanderRadius = 20.0f;
-    [SerializeField] private const float m_fDistanceFromLead = 75.0f;
-    [SerializeField] private const float m_fSeparationRange = 25.0f;
-    [SerializeField] private const float m_fGroupCohesionRange = 100.0f;
-    [SerializeField] private const int m_fWanderAngleMin = 45;
-    [SerializeField] private const int m_fWanderAngleMax = 60;
+    [SerializeField] private const float m_kfMass = 1.0f;
+    [SerializeField] private const float m_kfMinDelay = 2.0f;
+    [SerializeField] private const float m_kfMaxDelay = 5.0f;
+    [SerializeField] private const float m_kfMaxSpeed = 0.16f;
+    [SerializeField] private const float m_kfMaxForce = 0.025f;
+    [SerializeField] private const float m_kfFleeDistance = 0.5f;
+    [SerializeField] private const float m_kfBrakeDistance = 0.5f;
+    [SerializeField] private const float m_kfMaxWanderSpeed = 0.1f;
+    [SerializeField] private const float m_kfMaxWanderForce = 0.5f;
+    [SerializeField] private const float m_kfWanderDistance =0.16f;
+    [SerializeField] private const float m_kfWanderRadius = 0.2f;
+    [SerializeField] private const float m_kfWanderAngleMin = -90.0f;
+	[SerializeField] private const float m_kfWanderAngleMax = 90.0f;
+	[SerializeField] private const float m_kfWanderUpdatetime = 0.5f;
 
-    // Start is called before the first frame update\
-    //Make sure non-settings variables aare set to default
-    private void Start()
+
+	// Start is called before the first frame update\
+	//Make sure non-settings variables aare set to default
+	private void Start()
     {
         if (m_Animator == null)
         {
@@ -78,18 +77,20 @@ public class SlimeBehaviour : MonoBehaviour
             m_bAnimatorAttached = true;
         }
 
-        m_objPlayer = GameObject.FindGameObjectWithTag("Player"); ;
+        if(m_rgdbdSlime == null)
+		{
+            m_rgdbdSlime = this.GetComponent<Rigidbody2D>();
+		}
+
+       // m_objPlayer = GameObject.FindGameObjectWithTag("Player"); ;
     }
 
     private void Awake()
-    {
-        //m_objHive = GameObject.FindGameObjectWithTag("HiveMind").GetComponent<SlimeManagement>();
+	{ 
         ChangeState(STATE.IDLE);
-        //m_v2Destination = Vector2.zero;
         m_v2CurrentFacing = Vector2.zero;
         m_fDelayCounter = 0.0f;
         m_bDangerNearby = false;
-        m_NavMeshAgent.acceleration = m_fAcceleration;
     }
 
     /// <summary>
@@ -112,6 +113,27 @@ public class SlimeBehaviour : MonoBehaviour
             m_fDelayCounter -= Time.deltaTime;
         }
 
+        if(m_fWanderCounter>0)
+		{
+            m_fWanderCounter -= Time.deltaTime;
+		}
+
+        if(Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.E) )
+		{
+            TogglePlayerControl();
+            if (m_bIsPlayerControlled)
+                print("Assuming Direct Control");
+            else
+                print("Releasing Direct Control");
+		}
+
+        if (m_bIsPlayerControlled)
+        {
+            m_v2CurrentVelocity.x = Input.GetAxis("Horizontal");
+            m_v2CurrentVelocity.y = Input.GetAxis("Vertical");
+            m_v2CurrentVelocity.Normalize();
+        }
+
         if (m_bAnimatorAttached)
         {
             Vector2 CurrentPosition = transform.position;
@@ -121,110 +143,93 @@ public class SlimeBehaviour : MonoBehaviour
             m_Animator.SetFloat("Speed", m_v2CurrentFacing.magnitude);
         }
 
-        //m_fCurrentSpeed = m_NavMeshAgent.speed;
-        //m_fCurrentAccel = m_NavMeshAgent.acceleration;
     }
 
     private void FixedUpdate()
     {
         //If not in flee,seek or fight state, check
         //if it needs to be
-        if (m_eCurrentState != STATE.FLEE &&
-            m_eCurrentState != STATE.SEEKPLAYER &&
-            m_eCurrentState != STATE.FIGHT)
-        {
-            CheckIfNeedToFlee();
-        }
+        //if (m_eCurrentState != STATE.FLEE &&
+        //    m_eCurrentState != STATE.SEEKPLAYER &&
+        //    m_eCurrentState != STATE.FIGHT)
+        //{
+        //    CheckIfNeedToFlee();
+        //}
+        Vector2 currentPosition = transform.position;
 
-        switch (m_eCurrentState)
-        {
-            case STATE.IDLE:
-                {
-                    if (Idle())
+        if (m_bIsPlayerControlled)
+		{
+            currentPosition += m_v2CurrentVelocity * m_fMoveSpeed * Time.fixedDeltaTime;
+            transform.position = currentPosition;
+        }
+		else
+		{
+            currentPosition += m_v2CurrentVelocity * Time.fixedDeltaTime;
+            transform.position = currentPosition;
+
+            switch (m_eCurrentState)
+            {
+                case STATE.IDLE:
                     {
                         if (m_fDelayCounter <= 0)
                         {
-
+                            ChangeState(STATE.WANDER);
                         }
-                        //if(m_iFoodEaten< m_iWhenMultiply)
-                        //{
-                        //    ChangeState(STATE.WANDER);
-                        //    //Everytime slime wants to wander, increase food eaten
-                        //    //Temporary until food objects added
-                        //    m_iFoodEaten++;
-                        //}
-                        //else
-                        //{
-                        //    ChangeState(STATE.MULTIPLY);
-                        //}
+                        else
+                        {
+                        }
+                        break;
                     }
-                    break;
-                }
-            case STATE.MOVE:
-                {
-                    break;
-                }
-            case STATE.WANDER:
-                {
-                    //if (Wander())
-                    //{
-                    //    FullBrake();
-                    //    ChangeState(STATE.IDLE);
-                    //}
-                    break;
-                }
-            case STATE.SEEKPLAYER:
-                {
-                    if (SeekPlayer())
+                case STATE.MOVE:
                     {
-                        FullBrake();
-                        ChangeState(STATE.FIGHT);
+                        break;
                     }
-                    else
+                case STATE.WANDER:
                     {
-                        ChangeState(STATE.SEEKPLAYER);
+                        if (m_fDelayCounter <= 0)
+                        {
+                            ChangeState(STATE.IDLE);
+                            m_fWanderCounter = 0;
+                        }
+                        else
+                        {
+                            CalculateVelocity(Wander());
+                        }
+                        break;
                     }
-                    break;
-                }
-            case STATE.FIGHT:
-                {
-                    //Should not be in this state
-                    ChangeState(STATE.IDLE);
-                    break;
-                }
-            case STATE.FLEE:
-                {
-                    //if (Flee())
-                    //{
-                    //    FullBrake();
-                    //    ChangeState(STATE.IDLE);
-                    //}
-                    //else
-                    //{
-                    //    ChangeState(STATE.FLEE);
-                    //}
-                    break;
-                }
-            case STATE.GETHIT:
-                {
-                    //DoNothing
-                    break;
-                }
-            default:
-                {
-                    break;
-                }
-        }
-    }
-
-    public void EncounteredDanger()
-    {
-        m_bDangerNearby = true;
-    }
-
-    public void FledFromDanger()
-    {
-        m_bDangerNearby = false;
+                case STATE.SEEKPLAYER:
+                    {
+                        if (SeekPlayer())
+                        {
+                            ChangeState(STATE.FIGHT);
+                        }
+                        else
+                        {
+                            ChangeState(STATE.SEEKPLAYER);
+                        }
+                        break;
+                    }
+                case STATE.FIGHT:
+                    {
+                        //Should not be in this state
+                        ChangeState(STATE.IDLE);
+                        break;
+                    }
+                case STATE.FLEE:
+                    {
+                        break;
+                    }
+                case STATE.GETHIT:
+                    {
+                        //DoNothing
+                        break;
+                    }
+                default:
+                    {
+                        break;
+                    }
+            }
+        }      
     }
 
     /// <summary>
@@ -236,8 +241,6 @@ public class SlimeBehaviour : MonoBehaviour
         m_Animator.SetBool("Dead", true);
         m_Animator.SetTrigger("GetHit");
         GetComponent<Collider2D>().enabled = false;
-        StartCoroutine(PrepareToDisappear());
-        FullBrake();
         ChangeState(STATE.GETHIT);
     }
 
@@ -253,10 +256,8 @@ public class SlimeBehaviour : MonoBehaviour
         {
             case STATE.IDLE:
                 {
-                    //Stop all movement
-                    FullBrake();
-                    //m_v2Destination = Vector3.zero;
-                    m_fDelayCounter = 0.0f;
+                    m_fDelayCounter = Random.Range(m_kfMinDelay, m_kfMaxDelay);
+                    m_v2CurrentVelocity = Vector2.zero;
                     m_eCurrentState = STATE.IDLE;
                     break;
                 }
@@ -266,29 +267,8 @@ public class SlimeBehaviour : MonoBehaviour
                 }
             case STATE.WANDER:
                 {
-                    ////Find a position nearby to move to
-                    //int iDestSearchTries = 0;
-                    //bool bDestFound = false;
-                    //int fDistance = Random.Range(1,3);
-
-                    ////Try 30 times to find a valid destination
-                    //while( (iDestSearchTries<m_iMaxSearchTries) && !bDestFound)
-                    //{
-                    //    m_v2Destination = PickRandomDestOnNavMesh(fDistance * m_fMoveDistance);
-                    //    if((m_v2Destination - CurrentPosition).magnitude > m_fMoveDistance)
-                    //    {
-                    //        bDestFound = true;
-                    //        //m_ScriptAINavigate.GoToPosition(m_v2Destination, m_fMoveSpeed);
-                    //    }
-                    //    iDestSearchTries++;
-                    //}
-                    //m_eCurrentState = STATE.WANDER;
-
-                    ////If we couldn't find a valid destination, change back to idle state
-                    //if (!bDestFound)
-                    //{
-                    //    ChangeState(STATE.IDLE);
-                    //}
+                    m_fDelayCounter = Random.Range(m_kfMinDelay, m_kfMaxDelay);
+                    m_eCurrentState = STATE.WANDER;
                     break;
                 }
             case STATE.SEEKPLAYER:
@@ -298,62 +278,17 @@ public class SlimeBehaviour : MonoBehaviour
                     m_eCurrentState = STATE.SEEKPLAYER;
                     break;
                 }
-            case STATE.FIGHT:
-                {
-                    //Slime should be in range to attack
-                    StartCoroutine(Fight());
-                    break;
-                }
             case STATE.FLEE:
                 {
-                    if (m_objPlayer != null)
-                    {
-                        //               //Check if there are nearby slimes. if so, move towards them. 
-                        //               //if not, get the direction the player is at and move to aa position=
-                        //               //in the opposite direction
-                        //               Vector2 m_vec3FleeToDirection = transform.position;
-                        //               if (m_iNearbyFriends>0)
-                        //{
-                        //                       Collider2D[] friendly = Physics2D.OverlapCircleAll(transform.position, m_fFriendSearchRadius, m_maskSlimes);
-                        //                       float CurrentClosestFriendly = 9999.0f;
-                        //                       float DistanceToPlayer = (transform.position - m_objPlayer.transform.position).sqrMagnitude;
-                        //                       Collider2D ChosenFriendly = null;
+                    //if (m_objPlayer != null)
+                    //{
 
-                        //                       foreach(Collider2D slime in friendly)
-                        //		{
-                        //                           float distanceToFriendly = (transform.position - slime.transform.position).sqrMagnitude;
-                        //                           if(distanceToFriendly < CurrentClosestFriendly)
-                        //			{
-                        //                               ChosenFriendly = slime;
-                        //                               CurrentClosestFriendly = distanceToFriendly;
-                        //			}
-                        //		}
-
-                        //                       if(CurrentClosestFriendly < DistanceToPlayer)
-                        //		{
-                        //                           m_vec3FleeToDirection = ChosenFriendly.transform.position;
-                        //		}
-                        //		else
-                        //		{
-                        //                           m_vec3FleeToDirection = transform.position - m_objPlayer.transform.position;
-                        //		}
-
-                        //                   }
-                        //               else
-                        //{
-                        //                   m_vec3FleeToDirection = transform.position - m_objPlayer.transform.position;
-                        //               }
-                        //               m_vec3FleeToDirection.Normalize();
-                        //               m_v2CurrentFacing = m_vec3FleeToDirection;
-                        //               m_v2Destination = m_vec3FleeToDirection * 2 * m_fMoveDistance;
-                        //               //m_ScriptAINavigate.GoToPosition(CurrentPosition + m_v2Destination, m_fMoveSpeed*1.5f);
-                        //               m_eCurrentState = STATE.FLEE;
-                    }
-                    else
-                    {
-                        print("No player in scene");
-                        ChangeState(STATE.IDLE);
-                    }
+                    //}
+                    //else
+                    //{
+                    //    print("No player in scene");
+                    //    ChangeState(STATE.IDLE);
+                    //}
                     break;
                 }
             case STATE.GETHIT:
@@ -400,10 +335,10 @@ public class SlimeBehaviour : MonoBehaviour
 
         float angleToTarget = Vector2.Angle(currentPosition, targetPosition);//(float)((atan2(targetPosition.y, targetPosition.x) - atan2(currentPosition.y, currentPosition.x)) * (180 / PI));
 
-        desiredVelocity = (targetPosition - currentPosition).normalized * m_fMaxSpeed;
+        desiredVelocity = (targetPosition - currentPosition).normalized * m_kfMaxSpeed;
         steeringForce = desiredVelocity - currentVelocity;
-        steeringForce /= m_fMass;
-        steeringForce = Vector2.ClampMagnitude(steeringForce, m_fMaxForce);
+        steeringForce /= m_kfMass;
+        steeringForce = Vector2.ClampMagnitude(steeringForce, m_kfMaxForce);
 
         return steeringForce;
     }
@@ -415,22 +350,20 @@ public class SlimeBehaviour : MonoBehaviour
     /// <returns></returns>
     private Vector2 Wander()
     {
-        Vector2 currentVelocity = m_v2CurrentVelocity;
-
-        float randomAngle = Random.Range(m_fWanderAngleMin, m_fWanderAngleMax);
-        Vector2 wanderCircle = currentVelocity.normalized * m_fWanderDistance;
-        Vector2 wanderForce = new Vector2(Mathf.Cos(randomAngle / 1.0f), Mathf.Sin(randomAngle / 1.0f)) * m_fMaxWanderForce;
-        Vector2 displaceForce = wanderCircle + wanderForce;
-        return displaceForce;
-        //if(m_ScriptAINavigate.GetIfReachedPosition())
-        //{
-        //    return true;
-        //}
-        //else
-        //{
-        //    return false;
-        //}]
-        //return true;
+		if (m_fWanderCounter <= 0)
+		{
+			m_fWanderCounter = m_kfWanderUpdatetime;
+			Vector2 currentVelocity = m_v2CurrentVelocity;
+			float randomAngle = Random.Range(m_kfWanderAngleMin, m_kfWanderAngleMax);
+			Vector2 wanderCircle = currentVelocity.normalized * m_kfWanderDistance;
+			Vector2 wanderForce = new Vector2(Mathf.Cos(Mathf.Deg2Rad * randomAngle), Mathf.Sin(Mathf.Deg2Rad * randomAngle)) * m_kfMaxWanderForce;
+			Vector2 displaceForce = wanderCircle + wanderForce;
+			return displaceForce;
+	}
+		else
+		{
+            return Vector2.zero;
+		}
     }
     /// <summary>
     /// Arrive behaviour. Generates reducing force as it approcahes the target position
@@ -449,11 +382,11 @@ public class SlimeBehaviour : MonoBehaviour
 
         if (offsetDistance > 0)
         {
-            float reducedSpeed = (offsetDistance / m_fBrakeDistance) * m_fMaxSpeed;
-            reducedSpeed = Mathf.Min(reducedSpeed, m_fMaxSpeed);
+            float reducedSpeed = (offsetDistance / m_kfBrakeDistance) * m_kfMaxSpeed;
+            reducedSpeed = Mathf.Min(reducedSpeed, m_kfMaxSpeed);
             desiredVelocity = (reducedSpeed / offsetDistance) * offsetToTarget;
             steeringForce = desiredVelocity - currentVelocity;
-            steeringForce /= m_fMass;
+            steeringForce /= m_kfMass;
             return steeringForce;
         }
         else
@@ -475,12 +408,12 @@ public class SlimeBehaviour : MonoBehaviour
         Vector2 desiredVelocity;
         Vector2 steeringForce;
 
-        float angleToTarget = Vector2.Angle(targetPosition, currentPosition);//(float)((atan2(currentPosition.y, currentPosition.x) - atan2(targetPosition.y, targetPosition.x)) * (180 / PI));
+        float angleToTarget = Vector2.Angle(targetPosition, currentPosition);
 
-        desiredVelocity = (currentPosition - targetPosition).normalized * m_fMaxSpeed;
+        desiredVelocity = (currentPosition - targetPosition).normalized * m_kfMaxSpeed;
         steeringForce = desiredVelocity - currentVelocity;
-        steeringForce /= m_fMass;
-        steeringForce = Vector2.ClampMagnitude(steeringForce, m_fMaxForce);
+        steeringForce /= m_kfMass;
+        steeringForce = Vector2.ClampMagnitude(steeringForce, m_kfMaxForce);
         return steeringForce;
     }
 
@@ -493,8 +426,8 @@ public class SlimeBehaviour : MonoBehaviour
     {
         Vector2 currentPosition = this.transform.position;
         Vector2 targetPosition = m_v2TargetPosition;
-        float distanceToTarget = Vector2.SqrMagnitude(targetPosition - currentPosition);
-        if (distanceToTarget < m_fBrakeDistance)
+        float distanceToTarget = Vector2.Distance(targetPosition, currentPosition);
+        if (distanceToTarget < m_kfBrakeDistance)
         {
             return Arrive();
         }
@@ -503,6 +436,54 @@ public class SlimeBehaviour : MonoBehaviour
             return Seek();
         }
     }
+
+    /// <summary>
+    /// Pursue behaviour. Tries to predict the target's future position
+    /// and generates force towards it
+    /// </summary>
+    /// <returns></returns>
+    Vector2 Pursue(Transform _intargetTransform,float _inDeltaTime)
+    {
+	    Vector2 currentPosition = this.transform.position;
+        Vector2 targetPosition = m_v2TargetPosition;
+
+        //Guess the lead entity's future position
+        Vector2 leadsPosition = _intargetTransform.position;
+        Vector2 leadsVelocity = (leadsPosition - targetPosition) / (float)_inDeltaTime;
+        targetPosition = leadsPosition + (leadsVelocity* 2.0f );
+	    m_v2TargetPosition = targetPosition;
+
+	    return GoTo();
+    }
+
+    /// <summary>
+    /// Evade behaviour. Tries to predict the target's future position
+    /// and generates force away from it. If target is far away, it wanders
+    /// </summary>
+    /// <returns></returns>
+    Vector2 Evade(Transform _intargetTransform, float _inDeltaTime)
+    {
+        Vector2 currentPosition = this.transform.position;
+        Vector2 targetPosition = m_v2TargetPosition;
+
+        //Guess the lead entity's future position
+        Vector2 leadsPosition = _intargetTransform.position;
+        Vector2 leadsVelocity = (leadsPosition - targetPosition) / (float)_inDeltaTime;
+        targetPosition = leadsPosition + (leadsVelocity * 2.0f);
+        m_v2TargetPosition = targetPosition;
+
+        float distanceToTarget = Vector2.Distance(currentPosition, targetPosition);
+
+	if (distanceToTarget<m_kfBrakeDistance)
+	{
+		return Flee();
+    }
+
+    else
+    {
+        return Wander();
+    }
+}
 
     /// <summary>
     /// Commented code is suppose to have the slime move to a set distance
@@ -519,43 +500,6 @@ public class SlimeBehaviour : MonoBehaviour
         //{
         //    return false;
         //}
-    }
-
-    /// <summary>
-    /// In flee state, keep checking if danger is nearby. 
-    /// </summary>
-    /// <returns>false if danger still close, true if successfuly fled</returns>
-    //private bool Flee()
-    //{
-    //    if (m_bDangerNearby)
-    //    {
-    //        return false;
-    //    }
-    //    else
-    //    {
-    //        ChangeState(STATE.IDLE);
-    //        return true;
-    //    }
-    //}
-
-    /// <summary>
-    /// return a random location on the navmesh in a radius around the slime
-    /// </summary>
-    /// <param name="_inDistance"></param>
-    /// <returns></returns>
-    private Vector3 PickRandomDestOnNavMesh(float _inDistance)
-    {
-        Vector3 randomDirection = Random.insideUnitSphere * _inDistance;
-        randomDirection += transform.position;
-        NavMeshHit suitablePosition;
-        Vector3 targetPosition = Vector3.zero;
-
-        if (NavMesh.SamplePosition(randomDirection, out suitablePosition, _inDistance, 1))
-        {
-            targetPosition = suitablePosition.position;
-        }
-
-        return targetPosition;
     }
 
     private void CheckIfNeedToFlee()
@@ -575,38 +519,22 @@ public class SlimeBehaviour : MonoBehaviour
         }
     }
 
-    private void FullBrake()
-    {
-        //m_ScriptAINavigate.FullBrake();
-    }
-
-    //run the death aanimation, then destroy self after a set time
-    private IEnumerator PrepareToDisappear()
-    {
-        yield return new WaitForSeconds(m_fDeathAnimLength);
-        //m_objHive.SlimeDied();
-        //Destroy(gameObject);
-    }
-
-    //Add an impulse force to launch slime at player
-    private IEnumerator Fight()
-    {
-        m_eCurrentState = STATE.FIGHT;
-        Vector2 ForceDirection = (m_objPlayer.transform.position - transform.position).normalized;
-        m_rgdbdSlime.AddForce(ForceDirection * m_fChargeForce, ForceMode2D.Impulse);
-
-        yield return new WaitForSeconds(m_fAttackDuraation);
-
-        ChangeState(STATE.FLEE);
-    }
-
     private void OnDrawGizmosSelected()
     {
-        Gizmos.DrawWireSphere(transform.position, m_fFriendSearchRadius);
+        Gizmos.DrawWireSphere(transform.position, m_kfFleeDistance);
     }
 
-    private void CalculateVelocity()
+    private void CalculateVelocity(Vector2 _SteeringForce)
     {
-
+        Vector2 newVelocity = _SteeringForce + m_v2CurrentVelocity;
+        newVelocity = Vector2.ClampMagnitude(newVelocity, m_kfMaxSpeed);
+        m_v2CurrentVelocity = newVelocity;
     }
+
+    private void TogglePlayerControl()
+	{
+        m_bIsPlayerControlled = !m_bIsPlayerControlled;
+        m_fDelayCounter = 0;
+        ChangeState(STATE.IDLE);
+	}
 }
