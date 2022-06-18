@@ -189,17 +189,17 @@ public class PlayerControls : MonoBehaviour
         m_amrAnimator.SetTrigger("Attack");
         yield return new WaitForSeconds(0.2f);
 
-        Collider2D[] registeredHits = Physics2D.OverlapCircleAll(m_objHitMark.transform.position, m_fHitRange, m_lyrEnemies);
-        foreach(Collider2D enemy in registeredHits)
-        {
-            print("Player hit " + enemy.name);
-            SlimeBehaviour slime = enemy.GetComponent<SlimeBehaviour>();
-            if(slime != null)
-			{
-                slime.GetHit();
-                m_iSlimesKilled++;
-			}
-        }
+   //     Collider2D[] registeredHits = Physics2D.OverlapCircleAll(m_objHitMark.transform.position, m_fHitRange, m_lyrEnemies);
+   //     foreach(Collider2D enemy in registeredHits)
+   //     {
+   //         print("Player hit " + enemy.name);
+   //         SlimeBehaviour slime = enemy.GetComponent<SlimeBehaviour>();
+   //         if(slime != null)
+			//{
+   //             slime.GetHit();
+   //             m_iSlimesKilled++;
+			//}
+   //     }
         yield return new WaitForSeconds(0.2f);
         m_bAttacking = false;
     }

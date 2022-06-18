@@ -27,7 +27,6 @@ public class AgentController : MonoBehaviour
 
     [Header("ConnectedScripts")]
     [SerializeField] private Rigidbody2D rgdbdAgent;
-    //[SerializeField] private Animator Animator = null;
 
     [Header("Settings")]
     [SerializeField] public BlackBoard bbHomeBoard;
@@ -45,20 +44,20 @@ public class AgentController : MonoBehaviour
     [SerializeField] private float      fWanderCounter = 0.0f;
     [SerializeField] private float      fCurrentSpeed = 0.0f;
     [SerializeField] private float      fCurrentAccel = 0.0f;
+    [SerializeField] private bool       bIsRedTeam = true;
     [SerializeField] private bool       bIsPlayerControlled = false;
     [SerializeField] private bool       bDangerNearby = false;
-    //[SerializeField] private bool       bAnimatorAttached = false;
-    //[SerializeField] private LayerMask  maskSlimes;
-    
+    [SerializeField] private bool       bHoldingFlag = false;
+
     //Constants
     const float kfMass = 1.0f;
     const float kfMinDelay = 2.0f;
     const float kfMaxDelay = 5.0f;
-    const float kfMaxSpeed = 0.16f;
+    const float kfMaxSpeed = 0.5f;
     const float kfMaxForce = 0.025f;
     const float kfFleeDistance = 0.5f;
     const float kfBrakeDistance = 0.5f;
-    const float kfMaxWanderSpeed = 0.1f;
+    const float kfMaxWanderSpeed = 0.25f;
     const float kfMaxWanderForce = 0.25f;
     const float kfWanderDistance = 0.16f;
     const float kfWanderAngle = 30.0f;
@@ -67,21 +66,6 @@ public class AgentController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        //if (Animator == null)
-        //{
-        //    if ((Animator = GetComponent<Animator>()) == null)
-        //    {
-        //        print("A slime has no animator attached.");
-        //    }
-        //    else
-        //    {
-        //        bAnimatorAttached = true;
-        //    }
-        //}
-        //else
-        //{
-        //    bAnimatorAttached = true;
-        //}
 
         if (rgdbdAgent == null)
         {
@@ -114,16 +98,51 @@ public class AgentController : MonoBehaviour
             v2CurrentVelocity.y = Input.GetAxis("Vertical");
             v2CurrentVelocity.Normalize();
         }
-
-        //if (bAnimatorAttached)
-        //{
-        //    Vector2 CurrentPosition = transform.position;
-        //    //m_v2CurrentFacing = m_v2Destination - CurrentPosition;
-        //    Animator.SetFloat("FacingX", v2CurrentVelocity.x);
-        //    Animator.SetFloat("FacingY", v2CurrentVelocity.y);
-        //    Animator.SetFloat("Speed", v2CurrentVelocity.magnitude);
-        //}
     }
+    /// <summary>
+    /// Toggle if this agents is being controlled by the player
+    /// If is, create marker on agent.
+    /// If not, destroy the marker object
+    /// </summary>
+    public void TogglePlayerControl(GameObject objCamera)
+    {
+        bIsPlayerControlled = !bIsPlayerControlled;
+        if (bIsPlayerControlled)
+        {
+            objMarkerCreated = Instantiate(objMarkerPrefab, transform.position, Quaternion.identity, transform);
+            GameObject camera = Instantiate(objCamera, new Vector3(transform.position.x, transform.position.y, -10), Quaternion.identity, objMarkerCreated.transform);
+        }
+        else
+        {
+            Destroy(objMarkerCreated);
+            objMarkerCreated = null;
+        }
+        fDelayCounter = 0;
+        ChangeState(STATE.IDLE);
+    }
+    /// <summary>
+    /// Return if this agent is player controlled
+    /// </summary>
+    /// <returns></returns>
+    public bool IsPlayerControlled()
+    {
+        return bIsPlayerControlled;
+    }
+    
+    public void SetHoldingFlag()
+	{
+        bHoldingFlag = true;
+	}
+
+    public bool IsHoldingFlag()
+	{
+        return bHoldingFlag;
+	}
+
+    public bool GetIfRedTeam()
+	{
+        return bIsRedTeam;
+	}
     /// <summary>
     /// Change the agent sprite to the specified colour
     /// Assumes that the red agent and blue agent sprites
@@ -143,12 +162,14 @@ public class AgentController : MonoBehaviour
 					case COLOUR.RED:
 					{
 						agentSprite.sprite = sprtAgentSprites[0];
+                        bIsRedTeam = true;
 						break;
 					}
 					case COLOUR.BLUE:
 					{
 						agentSprite.sprite = sprtAgentSprites[1];
-						break;
+                        bIsRedTeam = false;
+                        break;
 					}
 					case COLOUR.NONE:
 					case COLOUR.MAX_NONE:
@@ -219,6 +240,24 @@ public class AgentController : MonoBehaviour
             }
         }
     }
+	private void OnCollisionEnter2D(Collision2D collision)
+	{
+		if(collision.collider.tag == "WallNS")
+		{
+            v2CurrentVelocity.y *= -1.0f;
+		}
+		else if(collision.collider.tag == "WallWE")
+		{
+            v2CurrentVelocity.x *= -1.0f;
+		}
+	}
+	/// <summary>
+	/// Display radius at which agent starts to flee
+	/// </summary>
+	private void OnDrawGizmosSelected()
+    {
+        Gizmos.DrawWireSphere(transform.position, kfFleeDistance);
+    }
     /// <summary>
     /// Change the current state
     /// </summary>
@@ -260,56 +299,26 @@ public class AgentController : MonoBehaviour
         }
     }
     /// <summary>
-    /// Display radius at which agent starts to flee
+    /// Calculate the resultant velocity due to
+    /// given resultant force(or steering force)
+    /// if current distance to y-axis is less than 0.1, then flip
+    /// the x force
     /// </summary>
-    private void OnDrawGizmosSelected()
-    {
-        Gizmos.DrawWireSphere(transform.position, kfFleeDistance);
-    }
-
+    /// <param name="_SteeringForce"></param>
     private void CalculateVelocity(Vector2 _SteeringForce)
     {
         Vector2 newVelocity = _SteeringForce + v2CurrentVelocity;
         newVelocity = Vector2.ClampMagnitude(newVelocity, kfMaxSpeed);
-        v2CurrentVelocity = newVelocity;
+        v2CurrentVelocity += newVelocity;
 
         if(eCurrentState == STATE.WANDER)
 		{
-            Vector2.ClampMagnitude(v2CurrentVelocity, kfMaxWanderSpeed);
+            v2CurrentVelocity = Vector2.ClampMagnitude(v2CurrentVelocity, kfMaxWanderSpeed);
 		}
 		else
 		{
-            Vector2.ClampMagnitude(v2CurrentVelocity, kfMass - kfMaxSpeed);
+            v2CurrentVelocity = Vector2.ClampMagnitude(v2CurrentVelocity, kfMaxSpeed);
 		}
-    }
-    /// <summary>
-    /// Toggle if this agents is being controlled by the player
-    /// If is, create marker on agent.
-    /// If not, destroy the marker object
-    /// </summary>
-    public void TogglePlayerControl(GameObject objCamera)
-    {
-        bIsPlayerControlled = !bIsPlayerControlled;
-        if(bIsPlayerControlled)
-		{
-            objMarkerCreated = Instantiate(objMarkerPrefab,transform.position, Quaternion.identity, transform);
-            GameObject camera = Instantiate(objCamera, new Vector3(transform.position.x, transform.position.y, -10), Quaternion.identity, objMarkerCreated.transform);
-		}
-        else
-		{
-            Destroy(objMarkerCreated);
-            objMarkerCreated = null;
-		}
-        fDelayCounter = 0;
-        ChangeState(STATE.IDLE);
-    }
-    /// <summary>
-    /// Return if this agent is player controlled
-    /// </summary>
-    /// <returns></returns>
-    public bool IsPlayerControlled()
-    {
-        return bIsPlayerControlled; 
     }
     /// <summary>
     /// Idle state does nothing until delay counter reaches
@@ -453,7 +462,7 @@ public class AgentController : MonoBehaviour
     /// and generates force towards it
     /// </summary>
     /// <returns></returns>
-    Vector2 Pursue(Transform _intargetTransform, float _inDeltaTime)
+    private Vector2 Pursue(Transform _intargetTransform, float _inDeltaTime)
     {
         Vector2 currentPosition = this.transform.position;
         Vector2 targetPosition = v2TargetPosition;
@@ -471,7 +480,7 @@ public class AgentController : MonoBehaviour
     /// Evade behaviour. Tries to predict the target's future position
     /// and generates force away from it. If target is far away, it wanders
     /// </summary>
-    Vector2 Evade(Transform _intargetTransform, float _inDeltaTime)
+    private Vector2 Evade(Transform _intargetTransform, float _inDeltaTime)
     {
         Vector2 currentPosition = this.transform.position;
         Vector2 targetPosition = v2TargetPosition;
@@ -501,11 +510,10 @@ public class AgentController : MonoBehaviour
     private Vector2 WanderInRandomDirection()
     {
         fWanderCounter = kfWanderUpdateTime;
-        Vector2 currentVelocity = v2CurrentVelocity;
         float randomAngle = Random.Range(0.0f, 360.0f);
-        //Vector2 wanderCircle = currentVelocity.normalized * kfWanderDistance;
-        Vector2 wanderForce = new Vector2(Mathf.Cos(Mathf.Deg2Rad * randomAngle), Mathf.Sin(Mathf.Deg2Rad * randomAngle)) * kfMaxWanderForce;
-        //Vector2 displaceForce = wanderCircle + wanderForce;
+        Vector2 wanderForce = new Vector2(Mathf.Cos(Mathf.Deg2Rad * randomAngle), Mathf.Sin(Mathf.Deg2Rad * randomAngle));
+
+        wanderForce *= kfMaxWanderForce;
         return wanderForce;
     }
 }

@@ -24,6 +24,8 @@ public class BlackBoard : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        iNumberOfAgents = StaticVariables.iTeamSize;
+
         if(objCameraPrefab == null)
 		{
             print("WARNING: No camera prefab attached to blackboard");
