@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 public class BlackBoard : MonoBehaviour
 {
@@ -9,17 +10,23 @@ public class BlackBoard : MonoBehaviour
     [SerializeField] GameObject objCameraPrefab;
 
     [Header("Settings")]
-    [SerializeField] private int iNumberOfAgents = 7;
     [SerializeField] private bool bIsRedSide = true;
-    [SerializeField] private float fSpawnRadius = 1.0f;
+    [SerializeField] private float fSpawnRadius = 0.5f;
     [SerializeField] private float fDistanceBetweenSpawn = 0.25f;
 
-    [Header("Boards")]
+    [Header("AgentsInfo")]
     [SerializeField] private GameObject objAttackingAgent;
     [SerializeField] private GameObject objControlledAgent;
 
+    [Header("TeamAreas")]
+    [SerializeField] private GameObject objOppFlageArea;
+    [SerializeField] private GameObject objOppPrisonArea;
+    [SerializeField] private Tilemap    tlmpHomeArea;
+
     [Header("Debug")]
     [SerializeField] private GameObject[] objTeamObjects;
+    [SerializeField] private bool bIsAttacking = false;
+    [SerializeField] private int iNumberOfAgents = 5;
 
     // Start is called before the first frame update
     void Start()
@@ -49,11 +56,12 @@ public class BlackBoard : MonoBehaviour
             if (agentController != null)
 			{
                 agentController.bbHomeBoard = this;
+                agentController.SetAreas(objOppFlageArea.transform.position, objOppPrisonArea.transform.position, tlmpHomeArea);
 
                 if (bIsRedSide)
                 {
                     agentController.SetAgentColour(AgentController.COLOUR.RED);
-                    if(i==1)
+                    if(i==0)
 					{
                         agentController.TogglePlayerControl(objCameraPrefab);
 					}
@@ -83,6 +91,29 @@ public class BlackBoard : MonoBehaviour
 				SwitchPlayerToNextAgent();
 			} 
 		}
+
+        if(!bIsAttacking && !bIsRedSide)
+		{
+            float highestScore = 0;
+            int indexOfHighestScore = 0;
+            for(int i = 0; i<iNumberOfAgents;i++)
+			{
+                AgentController agentController = objTeamObjects[i].GetComponent<AgentController>();
+                if(agentController)
+				{
+                    float score = agentController.DecideIfAttack();
+                    if(score > highestScore)
+					{
+                        indexOfHighestScore = i;
+					}
+				}
+            }
+
+            AgentController volunteeredAgent = objTeamObjects[indexOfHighestScore].GetComponent<AgentController>();
+            volunteeredAgent.ApproveAttackRequest();
+            bIsAttacking = true;
+            //volunteeredAgent
+        }
     }
 
     /// <summary>

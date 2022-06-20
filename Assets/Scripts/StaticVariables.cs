@@ -5,7 +5,9 @@ using UnityEngine;
 public class StaticVariables : MonoBehaviour
 {
     [Header("Game Variables")]
-    [SerializeField] static public int iTeamSize = 10;
+    [SerializeField] static public int iTeamSize = 7;
+    [SerializeField] static public float fNoManLandWidth= 0.25f;
+    
     [Header("Score")]
     [SerializeField] static private int iScore_Red = 0;
     [SerializeField] static private int iScore_Blue = 0;

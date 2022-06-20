@@ -60,7 +60,7 @@ public class Flag : MonoBehaviour
 				agent.SetHoldingFlag();
                 bIsHeld = true;
 				transform.SetParent(agent.transform);
-				//transform.position = Vector3.zero; 
+				transform.position = agent.transform.position; 
 			}
 		}
 	}

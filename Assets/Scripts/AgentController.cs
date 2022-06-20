@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 public class AgentController : MonoBehaviour
 {
@@ -9,11 +10,10 @@ public class AgentController : MonoBehaviour
         NONE,
         IDLE,
         WANDER,
-        FLEE,
-        SEEKFLAG,
-        RESCUECOMRADE,
+        //FLEE,
+        ATTACK,
         IMPRISONED,
-        GETHIT,
+        //GETHIT,
         MAX_NONE,
     }
 
@@ -25,6 +25,11 @@ public class AgentController : MonoBehaviour
         MAX_NONE,
 	}
 
+    public class PrevPosition
+	{
+        public Vector2 pos;
+	}
+
     [Header("ConnectedScripts")]
     [SerializeField] private Rigidbody2D rgdbdAgent;
 
@@ -34,19 +39,24 @@ public class AgentController : MonoBehaviour
     [SerializeField] private GameObject objMarkerPrefab;
     [SerializeField] private GameObject objMarkerCreated;
     [SerializeField] private Sprite[] sprtAgentSprites;
+    [SerializeField] private Tilemap tlmpHomeArea;
 
 
     [Header("Debug")]
+    [SerializeField] private Dictionary<GameObject, PrevPosition> lstOpponentAgentsNearby;
+    [SerializeField] private GameObject objTarget;
     [SerializeField] private STATE      eCurrentState = STATE.IDLE;
     [SerializeField] private Vector2    v2CurrentVelocity = Vector2.zero;
     [SerializeField] private Vector2    v2TargetPosition = Vector2.zero;
+    [SerializeField] private Vector2    v2FlagAreaPos = Vector2.zero;
+    [SerializeField] private Vector2    v2PrisonAreaPos = Vector2.zero;
     [SerializeField] private float      fDelayCounter = 0.0f;
     [SerializeField] private float      fWanderCounter = 0.0f;
     [SerializeField] private float      fCurrentSpeed = 0.0f;
     [SerializeField] private float      fCurrentAccel = 0.0f;
     [SerializeField] private bool       bIsRedTeam = true;
     [SerializeField] private bool       bIsPlayerControlled = false;
-    [SerializeField] private bool       bDangerNearby = false;
+    //[SerializeField] private bool       bDangerNearby = false;
     [SerializeField] private bool       bHoldingFlag = false;
 
     //Constants
@@ -54,8 +64,8 @@ public class AgentController : MonoBehaviour
     const float kfMinDelay = 2.0f;
     const float kfMaxDelay = 5.0f;
     const float kfMaxSpeed = 0.5f;
-    const float kfMaxForce = 0.025f;
-    const float kfFleeDistance = 0.5f;
+    const float kfMaxForce = 0.25f;
+    const float kfFleeDistance = 0.35f;
     const float kfBrakeDistance = 0.5f;
     const float kfMaxWanderSpeed = 0.25f;
     const float kfMaxWanderForce = 0.25f;
@@ -66,6 +76,7 @@ public class AgentController : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        lstOpponentAgentsNearby = new Dictionary<GameObject, PrevPosition>();
 
         if (rgdbdAgent == null)
         {
@@ -77,7 +88,7 @@ public class AgentController : MonoBehaviour
 	{
         ChangeState(STATE.IDLE);
         fDelayCounter = 0.0f;
-        bDangerNearby = false;
+        //bDangerNearby = false;
     }
 	// Update is called once per frame
 	void Update()
@@ -184,6 +195,42 @@ public class AgentController : MonoBehaviour
 		}
 	}
 
+    public void SetAreas(Vector2 _inFlagArea, Vector2 _inPrisonArea, Tilemap _inHomeArea)
+	{
+        v2FlagAreaPos = _inFlagArea;
+        v2PrisonAreaPos = _inPrisonArea;
+        tlmpHomeArea = _inHomeArea;
+	}
+
+    public float DecideIfAttack()
+	{
+        //Distance in game is actually tiny, so in most cases distance to the center
+        //will be less than one. We can take advantage of this to generate a higher 
+        //score for smaller distance by subtracting from one.
+        float distanceToMiddle = Mathf.Sqrt(transform.position.x * transform.position.x);
+        float RandomScore = Random.Range(distanceToMiddle, (1.0f - distanceToMiddle));
+        return RandomScore;
+	}
+
+    private void DetectedIntruder(GameObject _inDetectedIntruder)
+	{
+
+	}
+
+    public void ApproveAttackRequest()
+	{
+        int randomMode = Random.Range(0,10);
+        if(randomMode>5)
+		{
+            v2TargetPosition = v2FlagAreaPos;
+		}
+        else
+		{
+            v2TargetPosition = v2PrisonAreaPos;
+        }
+        ChangeState(STATE.ATTACK);
+    }
+
 	private void FixedUpdate()
 	{
         Vector2 currentPosition = transform.position;
@@ -220,19 +267,15 @@ public class AgentController : MonoBehaviour
                         }
                         else
                         {
-                            CalculateVelocity(Wander());
+                            CalculateVelocity(Wander(Mathf.Sqrt(transform.position.x * transform.position.x)));
                         }
                         break;
                     }
-                case STATE.FLEE:
-                    {
+                case STATE.ATTACK:
+					{
+                        CalculateVelocity(Attack());
                         break;
-                    }
-                case STATE.GETHIT:
-                    {
-                        //DoNothing
-                        break;
-                    }
+					}
                 default:
                     {
                         break;
@@ -240,6 +283,14 @@ public class AgentController : MonoBehaviour
             }
         }
     }
+    /// <summary>
+    /// Invert move directions when colliding with
+    /// the corresponding wall.
+    /// I.e.: flip x direction when colliding with
+    /// West/East wall
+    /// Or send opponent to prison if collided over home territory
+    /// </summary>
+    /// <param name="collision"></param>
 	private void OnCollisionEnter2D(Collision2D collision)
 	{
 		if(collision.collider.tag == "WallNS")
@@ -250,7 +301,44 @@ public class AgentController : MonoBehaviour
 		{
             v2CurrentVelocity.x *= -1.0f;
 		}
+        else if(collision.collider.tag == "Agent" && tlmpHomeArea.HasTile(tlmpHomeArea.WorldToCell(collision.transform.position)))
+		{
+            AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
+            if(collidedAgent && collidedAgent.bIsRedTeam!=bIsRedTeam)
+			{
+                print("Collided with opponent");
+			}
+		}
 	}
+
+	private void OnTriggerEnter2D(Collider2D collision)
+	{
+		if(collision.tag== "Agent" )
+		{
+            AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
+            if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam)
+            {
+                if(!lstOpponentAgentsNearby.ContainsKey(collision.gameObject))
+				{
+                    print("Hostile agent is close by and registered");
+                    lstOpponentAgentsNearby.Add(collision.gameObject, new PrevPosition {pos = collision.transform.position });
+				}
+            }
+        }
+	}
+
+	private void OnTriggerExit2D(Collider2D collision)
+	{
+        if (collision.tag == "Agent" )
+        {
+            AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
+            if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam)
+            {
+                print("Lost sight of a hostile agent");
+                lstOpponentAgentsNearby.Remove(collision.gameObject);
+            }
+        }
+    }
 	/// <summary>
 	/// Display radius at which agent starts to flee
 	/// </summary>
@@ -278,20 +366,16 @@ public class AgentController : MonoBehaviour
             case STATE.WANDER:
             {
                 fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
-                CalculateVelocity(WanderInRandomDirection());
+                CalculateVelocity(WanderInRandomDirection(Mathf.Sqrt(transform.position.x * transform.position.x)));
                 eCurrentState = STATE.WANDER;
                 break;
-             }
-            case STATE.FLEE:
-            {
-                break;
             }
-            case STATE.GETHIT:
-            {
-                //do nothing, just wait to be destroyed
+            case STATE.ATTACK:
+			{
+                CalculateVelocity(Attack());
+                eCurrentState = STATE.ATTACK;
                 break;
-
-            }
+			}
             default:
             {
                 break;
@@ -337,6 +421,27 @@ public class AgentController : MonoBehaviour
         }
     }
 
+    private Vector2 Attack()
+	{
+        Vector2 fleeForce = Vector2.zero;
+        Vector2 currentTargetPosition = v2TargetPosition;
+        //Dictionary<GameObject, PrevPosition>.KeyCollection lstHostileAgents = lstOpponentAgentsNearby.Keys;
+        if (lstOpponentAgentsNearby.Count > 0)
+		{
+            foreach (var hostile in lstOpponentAgentsNearby.Keys)
+			{
+                fleeForce += Evade(hostile);
+			}
+		}
+
+        v2TargetPosition = currentTargetPosition;
+        fleeForce = fleeForce.normalized * kfMaxForce;//Vector2.ClampMagnitude(fleeForce, kfMaxForce);
+        Vector2 GoToForce = GoTo();
+        Vector2 resultantForce =    (GoToForce * (fleeForce.magnitude>0?0.1f:1.0f)) + 
+                                    (fleeForce * (GoToForce.magnitude>0?0.9f:1.0f));
+
+        return Vector2.ClampMagnitude( resultantForce, kfMaxForce);
+	}
     /// <summary>
     /// Seek behaviour. Generates force towards the target position
     /// </summary>
@@ -349,7 +454,7 @@ public class AgentController : MonoBehaviour
         Vector2 desiredVelocity;
         Vector2 steeringForce;
 
-        float angleToTarget = Vector2.Angle(currentPosition, targetPosition);//(float)((atan2(targetPosition.y, targetPosition.x) - atan2(currentPosition.y, currentPosition.x)) * (180 / PI));
+        float angleToTarget = Vector2.Angle(currentPosition, targetPosition);
 
         desiredVelocity = (targetPosition - currentPosition).normalized * kfMaxSpeed;
         steeringForce = desiredVelocity - currentVelocity;
@@ -363,14 +468,18 @@ public class AgentController : MonoBehaviour
     /// every set period as described by m_kfWanderUpdateTime
     /// </summary>
     /// <returns></returns>
-    private Vector2 Wander()
+    private Vector2 Wander(float _inDistanceToMiddle)
     {
-        if (fWanderCounter <= 0)
+        //the closet this agent is to the middle, the higher this ratio will be
+        float distanceToMiddleRatio = StaticVariables.fNoManLandWidth / _inDistanceToMiddle;// Mathf.Sqrt(transform.position.x * transform.position.x);
+
+        if (fWanderCounter <= 0 || distanceToMiddleRatio>=1.0f)
         {
             fWanderCounter = kfWanderUpdateTime;
             Vector2 currentVelocity = v2CurrentVelocity;
-            //angle is being changed not modified
-            float randomAngle = Random.Range(-kfWanderAngle, kfWanderAngle);
+
+            float randomAngle = (Random.Range(-kfWanderAngle, kfWanderAngle) * (1 - distanceToMiddleRatio)) +
+                              ((bIsRedTeam ? Random.Range(135.0f, 225.0f) : Random.Range(315.0f, 405.0f)) * distanceToMiddleRatio); ;
             if(randomAngle < 0.0f)
 			{
                 randomAngle += 360.0f;
@@ -420,10 +529,10 @@ public class AgentController : MonoBehaviour
     /// </summary>
     /// <param name="_inEntity"></param>
     /// <returns></returns>
-    private Vector2 Flee()
+    private Vector2 Flee(Vector2 _inPositionToAvoid)
     {
         Vector2 currentPosition = this.transform.position;
-        Vector2 targetPosition = v2TargetPosition;
+        Vector2 targetPosition = _inPositionToAvoid;
         Vector2 currentVelocity = v2CurrentVelocity;
         Vector2 desiredVelocity;
         Vector2 steeringForce;
@@ -480,37 +589,36 @@ public class AgentController : MonoBehaviour
     /// Evade behaviour. Tries to predict the target's future position
     /// and generates force away from it. If target is far away, it wanders
     /// </summary>
-    private Vector2 Evade(Transform _intargetTransform, float _inDeltaTime)
+    private Vector2 Evade(GameObject _Hostile)
     {
         Vector2 currentPosition = this.transform.position;
-        Vector2 targetPosition = v2TargetPosition;
+        Vector2 targetPosition = Vector2.zero;
 
-        //Guess the lead entity's future position
-        Vector2 leadsPosition = _intargetTransform.position;
-        Vector2 leadsVelocity = (leadsPosition - targetPosition) / (float)_inDeltaTime;
-        targetPosition = leadsPosition + (leadsVelocity * 2.0f);
-        v2TargetPosition = targetPosition;
+        //Guess the hostile entity's future position using the stored previous known position
+        Vector2 hostilePosition = _Hostile.transform.position;
+        Vector2 hostileVelocity = (hostilePosition - lstOpponentAgentsNearby[_Hostile].pos) / Time.fixedDeltaTime;
+        //Guess position in 5 frames
+        targetPosition = hostilePosition + (hostileVelocity * 5.0f);
+        //Update the paired list with the hostile's current position
+        lstOpponentAgentsNearby[_Hostile].pos = hostilePosition;
 
         float distanceToTarget = Vector2.Distance(currentPosition, targetPosition);
 
-        if (distanceToTarget < kfBrakeDistance)
-        {
-            return Flee();
-        }
 
-        else
-        {
-            return Wander();
-        }
+         return Flee(targetPosition);
+
     }
     /// <summary>
     /// Agent start wandering in a random direction
     /// </summary>
     /// <returns></returns>
-    private Vector2 WanderInRandomDirection()
+    private Vector2 WanderInRandomDirection(float _inDistanceToMiddle)
     {
+        //the closest this agent is to the middle, the higher this ratio will be
+        float distanceToMiddleRatio = StaticVariables.fNoManLandWidth / _inDistanceToMiddle;// Mathf.Sqrt(transform.position.x * transform.position.x);
         fWanderCounter = kfWanderUpdateTime;
-        float randomAngle = Random.Range(0.0f, 360.0f);
+        float randomAngle = (Random.Range(0.0f,360.0f) * (1-distanceToMiddleRatio)) + 
+                            ((bIsRedTeam ? Random.Range(135.0f, 225.0f) : Random.Range(315.0f, 405.0f)) * distanceToMiddleRatio);
         Vector2 wanderForce = new Vector2(Mathf.Cos(Mathf.Deg2Rad * randomAngle), Mathf.Sin(Mathf.Deg2Rad * randomAngle));
 
         wanderForce *= kfMaxWanderForce;
