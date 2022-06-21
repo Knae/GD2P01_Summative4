@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class FlagControl : MonoBehaviour
 {
@@ -10,6 +11,9 @@ public class FlagControl : MonoBehaviour
     [Header("FlagArea")]
     [SerializeField] private GameObject objFlagArea_Red;
     [SerializeField] private GameObject objFlagArea_Blue;
+    [Header("ScoreDisplay")]
+    [SerializeField] private Text txtdispScore_Red;
+    [SerializeField] private Text txtdispScore_Blue;
     [Header("Prefabs")]
     [SerializeField] private GameObject objFlagPrefab;
 
@@ -20,14 +24,28 @@ public class FlagControl : MonoBehaviour
         {
             PutDownFlags();
         }
+        txtdispScore_Red.text = "0";
+        txtdispScore_Blue.text = "0";
     }
 
-    // Update is called once per frame
-    void Update()
+    public Vector2 GeneratePositionInFlagArea(bool _inIsRedArea)
     {
-        
-    }
+        txtdispScore_Red.text = StaticVariables.GetScore(true).ToString();
+        txtdispScore_Blue.text = StaticVariables.GetScore(false).ToString();
 
+        Vector3 generatedPosition = new Vector2(Random.Range(-fFlagSpawnRadius, fFlagSpawnRadius), Random.Range(-fFlagSpawnRadius, fFlagSpawnRadius));
+        generatedPosition = Vector3.ClampMagnitude(generatedPosition, fFlagSpawnRadius);
+
+        if(_inIsRedArea)
+		{
+            generatedPosition += objFlagArea_Red.transform.position;
+        }
+        else
+		{
+            generatedPosition += objFlagArea_Blue.transform.position;
+        }
+        return generatedPosition;
+    }
     private void PutDownFlags()
 	{
 
@@ -40,11 +58,11 @@ public class FlagControl : MonoBehaviour
             GameObject newRedFlag = Instantiate(objFlagPrefab,generatedPosition + objFlagArea_Red.transform.position, Quaternion.identity);
             newFlagScript = newRedFlag.GetComponent<Flag>();
             newFlagScript.SetFlagColourRed(true);
-            newFlagScript.SetFlagAreaPositons(objFlagArea_Red.transform.position, objFlagArea_Blue.transform.position);
+            newFlagScript.SetFlagVariables(this);
             GameObject newBlueFlag = Instantiate(objFlagPrefab,generatedPosition + objFlagArea_Blue.transform.position, Quaternion.identity);
             newFlagScript = newBlueFlag.GetComponent<Flag>();
             newFlagScript.SetFlagColourRed(false);
-            newFlagScript.SetFlagAreaPositons(objFlagArea_Red.transform.position, objFlagArea_Blue.transform.position);
+            newFlagScript.SetFlagVariables(this);
 
         } 
     }

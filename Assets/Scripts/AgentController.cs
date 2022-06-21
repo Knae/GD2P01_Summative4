@@ -12,6 +12,7 @@ public class AgentController : MonoBehaviour
         WANDER,
         //FLEE,
         ATTACK,
+        RETURNHOME,
         IMPRISONED,
         //GETHIT,
         MAX_NONE,
@@ -48,16 +49,16 @@ public class AgentController : MonoBehaviour
     [SerializeField] private STATE      eCurrentState = STATE.IDLE;
     [SerializeField] private Vector2    v2CurrentVelocity = Vector2.zero;
     [SerializeField] private Vector2    v2TargetPosition = Vector2.zero;
-    [SerializeField] private Vector2    v2FlagAreaPos = Vector2.zero;
-    [SerializeField] private Vector2    v2PrisonAreaPos = Vector2.zero;
+    [SerializeField] private Vector2    v2HostileFlagAreaPos = Vector2.zero;
+    [SerializeField] private Vector2    v2HostilePrisonAreaPos = Vector2.zero;
     [SerializeField] private float      fDelayCounter = 0.0f;
     [SerializeField] private float      fWanderCounter = 0.0f;
     [SerializeField] private float      fCurrentSpeed = 0.0f;
     [SerializeField] private float      fCurrentAccel = 0.0f;
     [SerializeField] private bool       bIsRedTeam = true;
     [SerializeField] private bool       bIsPlayerControlled = false;
-    //[SerializeField] private bool       bDangerNearby = false;
     [SerializeField] private bool       bHoldingFlag = false;
+    [SerializeField] private bool       bIsImprisoned = false;
 
     //Constants
     const float kfMass = 1.0f;
@@ -109,6 +110,19 @@ public class AgentController : MonoBehaviour
             v2CurrentVelocity.y = Input.GetAxis("Vertical");
             v2CurrentVelocity.Normalize();
         }
+
+        if(bHoldingFlag)
+		{
+            float safeZoneLine = 0.25f;
+            Flag heldFlag = this.GetComponentInChildren<Flag>();
+            if ((bIsRedTeam && transform.position.x < -safeZoneLine) ||
+                (!bIsRedTeam && transform.position.x > safeZoneLine))
+			{
+                heldFlag.FlagCaptured();
+                bHoldingFlag = false;
+                bbHomeBoard.AttackSuccess();
+			}
+		}
     }
     /// <summary>
     /// Toggle if this agents is being controlled by the player
@@ -140,9 +154,12 @@ public class AgentController : MonoBehaviour
         return bIsPlayerControlled;
     }
     
+    //This agent is now holding a flag
+    //It should now try to return home
     public void SetHoldingFlag()
 	{
         bHoldingFlag = true;
+        ChangeState(STATE.RETURNHOME);
 	}
 
     public bool IsHoldingFlag()
@@ -153,6 +170,11 @@ public class AgentController : MonoBehaviour
     public bool GetIfRedTeam()
 	{
         return bIsRedTeam;
+	}
+
+    public bool GetIfImprisoned()
+	{
+        return bIsImprisoned;
 	}
     /// <summary>
     /// Change the agent sprite to the specified colour
@@ -197,11 +219,24 @@ public class AgentController : MonoBehaviour
 
     public void SetAreas(Vector2 _inFlagArea, Vector2 _inPrisonArea, Tilemap _inHomeArea)
 	{
-        v2FlagAreaPos = _inFlagArea;
-        v2PrisonAreaPos = _inPrisonArea;
+        v2HostileFlagAreaPos = _inFlagArea;
+        v2HostilePrisonAreaPos = _inPrisonArea;
         tlmpHomeArea = _inHomeArea;
 	}
 
+    public void ImprisonThisAgent()
+	{
+        bbHomeBoard.AttackFailed();
+        bIsImprisoned = true;
+        ChangeState(STATE.IMPRISONED);
+        transform.position = v2HostilePrisonAreaPos;
+        if(bHoldingFlag)
+		{
+            bHoldingFlag = false;
+            Flag heldFlag = this.GetComponentInChildren<Flag>();
+            heldFlag.FlagFreed();
+		}
+	}
     public float DecideIfAttack()
 	{
         //Distance in game is actually tiny, so in most cases distance to the center
@@ -217,21 +252,70 @@ public class AgentController : MonoBehaviour
 
 	}
 
-    public void ApproveAttackRequest()
+    public void ApproveAttackRequest(bool _inCapturedFriends)
 	{
-        int randomMode = Random.Range(0,10);
+        int randomMode = _inCapturedFriends?Random.Range(0,10):10;
         if(randomMode>5)
 		{
-            v2TargetPosition = v2FlagAreaPos;
+            v2TargetPosition = v2HostileFlagAreaPos;
 		}
         else
 		{
-            v2TargetPosition = v2PrisonAreaPos;
+            v2TargetPosition = v2HostilePrisonAreaPos;
         }
         ChangeState(STATE.ATTACK);
     }
 
-	private void FixedUpdate()
+    /// <summary>
+    /// Change the current state
+    /// </summary>
+    /// <param name="_inNewState"></param>
+    public void ChangeState(STATE _inNewState)
+    {
+        Vector2 CurrentPosition = transform.position;
+
+        switch (_inNewState)
+        {
+            case STATE.IDLE:
+                {
+                    fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
+                    v2CurrentVelocity = Vector2.zero;
+                    eCurrentState = STATE.IDLE;
+                    break;
+                }
+            case STATE.WANDER:
+                {
+                    fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
+                    CalculateVelocity(WanderInRandomDirection(Mathf.Sqrt(transform.position.x * transform.position.x)));
+                    eCurrentState = STATE.WANDER;
+                    break;
+                }
+            case STATE.ATTACK:
+                {
+                    CalculateVelocity(Attack());
+                    eCurrentState = STATE.ATTACK;
+                    break;
+                }
+            case STATE.RETURNHOME:
+                {
+                    v2TargetPosition.x = -v2HostileFlagAreaPos.x;
+                    CalculateVelocity(Attack());
+                    eCurrentState = STATE.RETURNHOME;
+                    break;
+                }
+            case STATE.IMPRISONED:
+				{
+                    eCurrentState = STATE.IMPRISONED;
+                    v2CurrentVelocity = Vector2.zero;
+                    break;
+				}
+            default:
+                {
+                    break;
+                }
+        }
+    }
+    private void FixedUpdate()
 	{
         Vector2 currentPosition = transform.position;
 
@@ -253,9 +337,6 @@ public class AgentController : MonoBehaviour
                         {
                             ChangeState(STATE.WANDER);
                         }
-                        else
-                        {
-                        }
                         break;
                     }
                 case STATE.WANDER:
@@ -276,6 +357,20 @@ public class AgentController : MonoBehaviour
                         CalculateVelocity(Attack());
                         break;
 					}
+                case STATE.RETURNHOME:
+					{
+                        v2TargetPosition.y = transform.position.y;
+                        if(Vector2.Distance(v2TargetPosition,transform.position) < kfBrakeDistance/2)
+						{
+                            ChangeState(STATE.IDLE);
+						}
+                        else
+						{
+                          CalculateVelocity(Attack());
+						}
+
+                        break;
+					}
                 default:
                     {
                         break;
@@ -293,7 +388,8 @@ public class AgentController : MonoBehaviour
     /// <param name="collision"></param>
 	private void OnCollisionEnter2D(Collision2D collision)
 	{
-		if(collision.collider.tag == "WallNS")
+        Flag flag = collision.gameObject.GetComponent<Flag>();
+        if (collision.collider.tag == "WallNS")
 		{
             v2CurrentVelocity.y *= -1.0f;
 		}
@@ -307,23 +403,41 @@ public class AgentController : MonoBehaviour
             if(collidedAgent && collidedAgent.bIsRedTeam!=bIsRedTeam)
 			{
                 print("Collided with opponent");
+                collidedAgent.ImprisonThisAgent();
 			}
 		}
-	}
+        //else if (/*!collision.collider.isTrigger &&*/  flag != null && !flag.GetIfHeld() &&
+        //        !bHoldingFlag && (flag.IsRedFlag() != bIsRedTeam))
+        //{
+        //        //agent.SetHoldingFlag();
+        //        flag.SetIsHeld(true);
+        //        bHoldingFlag = true;
+        //        flag.transform.SetParent(this.transform);
+        //        flag.transform.position = this.transform.position;
+        //        ChangeState(STATE.RETURNHOME);
+        //}
+    }
 
 	private void OnTriggerEnter2D(Collider2D collision)
 	{
 		if(collision.tag== "Agent" )
 		{
             AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
-            if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam)
-            {
-                if(!lstOpponentAgentsNearby.ContainsKey(collision.gameObject))
+            if (collidedAgent)
+			{
+				if (collidedAgent.bIsRedTeam != bIsRedTeam)
 				{
-                    print("Hostile agent is close by and registered");
-                    lstOpponentAgentsNearby.Add(collision.gameObject, new PrevPosition {pos = collision.transform.position });
+					if (!lstOpponentAgentsNearby.ContainsKey(collision.gameObject))
+					{
+						print("Hostile agent is close by and registered");
+						lstOpponentAgentsNearby.Add(collision.gameObject, new PrevPosition { pos = collision.transform.position });
+					}
 				}
-            }
+				else if(collidedAgent.bIsRedTeam == bIsRedTeam && collidedAgent.GetIfImprisoned())
+				{
+                    v2TargetPosition = collidedAgent.transform.position;
+                } 
+			}
         }
 	}
 
@@ -346,42 +460,7 @@ public class AgentController : MonoBehaviour
     {
         Gizmos.DrawWireSphere(transform.position, kfFleeDistance);
     }
-    /// <summary>
-    /// Change the current state
-    /// </summary>
-    /// <param name="_inNewState"></param>
-    private void ChangeState(STATE _inNewState)
-    {
-        Vector2 CurrentPosition = transform.position;
-
-        switch (_inNewState)
-        {
-            case STATE.IDLE:
-            {
-                fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
-                v2CurrentVelocity = Vector2.zero;
-                eCurrentState = STATE.IDLE;
-                break;
-            }
-            case STATE.WANDER:
-            {
-                fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
-                CalculateVelocity(WanderInRandomDirection(Mathf.Sqrt(transform.position.x * transform.position.x)));
-                eCurrentState = STATE.WANDER;
-                break;
-            }
-            case STATE.ATTACK:
-			{
-                CalculateVelocity(Attack());
-                eCurrentState = STATE.ATTACK;
-                break;
-			}
-            default:
-            {
-                break;
-            }
-        }
-    }
+    
     /// <summary>
     /// Calculate the resultant velocity due to
     /// given resultant force(or steering force)
@@ -537,7 +616,7 @@ public class AgentController : MonoBehaviour
         Vector2 desiredVelocity;
         Vector2 steeringForce;
 
-        float angleToTarget = Vector2.Angle(targetPosition, currentPosition);
+        //float angleToTarget = Vector2.Angle(targetPosition, currentPosition);
 
         desiredVelocity = (currentPosition - targetPosition).normalized * kfMaxSpeed;
         steeringForce = desiredVelocity - currentVelocity;

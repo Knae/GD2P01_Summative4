@@ -26,6 +26,7 @@ public class BlackBoard : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private GameObject[] objTeamObjects;
     [SerializeField] private bool bIsAttacking = false;
+    [SerializeField] private int iAgentsCaptured = 0;
     [SerializeField] private int iNumberOfAgents = 5;
 
     // Start is called before the first frame update
@@ -92,6 +93,8 @@ public class BlackBoard : MonoBehaviour
 			} 
 		}
 
+        //If we're the blue side and not already attacking,
+        //Check each agent for a random score to attack
         if(!bIsAttacking && !bIsRedSide)
 		{
             float highestScore = 0;
@@ -99,7 +102,7 @@ public class BlackBoard : MonoBehaviour
             for(int i = 0; i<iNumberOfAgents;i++)
 			{
                 AgentController agentController = objTeamObjects[i].GetComponent<AgentController>();
-                if(agentController)
+                if(agentController && !agentController.GetIfImprisoned())
 				{
                     float score = agentController.DecideIfAttack();
                     if(score > highestScore)
@@ -109,11 +112,28 @@ public class BlackBoard : MonoBehaviour
 				}
             }
 
+            //Get the highest score and tell the agent 
+            //its request to attack is approved
             AgentController volunteeredAgent = objTeamObjects[indexOfHighestScore].GetComponent<AgentController>();
-            volunteeredAgent.ApproveAttackRequest();
+            volunteeredAgent.ApproveAttackRequest(false);
             bIsAttacking = true;
-            //volunteeredAgent
         }
+    }
+
+    public void RescueSuccess()
+	{
+        iAgentsCaptured--;
+    }
+
+    public void AttackSuccess()
+	{
+        bIsAttacking = false;
+	}
+
+    public void AttackFailed()
+    {
+        bIsAttacking = false;
+        iAgentsCaptured++;
     }
 
     /// <summary>
