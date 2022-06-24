@@ -93,13 +93,13 @@ MonoBehaviour:
   sprtAgentSprites:
   - {fileID: -5035310422624121818, guid: 3f621717818204c419d7730c74974d4c, type: 3}
   - {fileID: 1961390720084292201, guid: 3f621717818204c419d7730c74974d4c, type: 3}
-  lstOpponentAgentsNearby: []
+  tlmpHomeArea: {fileID: 0}
   objTarget: {fileID: 0}
   eCurrentState: 1
   v2CurrentVelocity: {x: 0, y: 0}
   v2TargetPosition: {x: 0, y: 0}
-  v2FlagAreaPos: {x: 0, y: 0}
-  v2PrisonAreaPos: {x: 0, y: 0}
+  v2HostileFlagAreaPos: {x: 0, y: 0}
+  v2HostilePrisonAreaPos: {x: 0, y: 0}
   fDelayCounter: 0
   fWanderCounter: 0
   fCurrentSpeed: 8.97
@@ -107,6 +107,7 @@ MonoBehaviour:
   bIsRedTeam: 1
   bIsPlayerControlled: 0
   bHoldingFlag: 0
+  bIsImprisoned: 0
 --- !u!58 &8329321557829693531
 CircleCollider2D:
   m_ObjectHideFlags: 0
@@ -122,7 +123,7 @@ CircleCollider2D:
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
   serializedVersion: 2
-  m_Radius: 0.7
+  m_Radius: 0.5
 --- !u!1 &8685953678251182641
 GameObject:
   m_ObjectHideFlags: 0

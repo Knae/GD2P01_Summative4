@@ -9,6 +9,7 @@ TagManager:
   - Sea
   - WallWE
   - Agent
+  - Flag
   layers:
   - Default
   - TransparentFX

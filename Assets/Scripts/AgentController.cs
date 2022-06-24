@@ -66,7 +66,8 @@ public class AgentController : MonoBehaviour
     const float kfMaxDelay = 5.0f;
     const float kfMaxSpeed = 0.5f;
     const float kfMaxForce = 0.25f;
-    const float kfFleeDistance = 0.35f;
+    const float kfMaxFleeForce = 0.4f;
+    const float kfFleeDistance = 0.3f;
     const float kfBrakeDistance = 0.5f;
     const float kfMaxWanderSpeed = 0.25f;
     const float kfMaxWanderForce = 0.25f;
@@ -89,7 +90,6 @@ public class AgentController : MonoBehaviour
 	{
         ChangeState(STATE.IDLE);
         fDelayCounter = 0.0f;
-        //bDangerNearby = false;
     }
 	// Update is called once per frame
 	void Update()
@@ -120,7 +120,11 @@ public class AgentController : MonoBehaviour
 			{
                 heldFlag.FlagCaptured();
                 bHoldingFlag = false;
-                bbHomeBoard.AttackSuccess();
+                if(!bIsPlayerControlled)
+				{
+                    bbHomeBoard.AttackSuccess();
+				}
+
 			}
 		}
     }
@@ -239,12 +243,19 @@ public class AgentController : MonoBehaviour
 	}
     public float DecideIfAttack()
 	{
-        //Distance in game is actually tiny, so in most cases distance to the center
-        //will be less than one. We can take advantage of this to generate a higher 
-        //score for smaller distance by subtracting from one.
-        float distanceToMiddle = Mathf.Sqrt(transform.position.x * transform.position.x);
-        float RandomScore = Random.Range(distanceToMiddle, (1.0f - distanceToMiddle));
-        return RandomScore;
+		if (eCurrentState != STATE.ATTACK)
+		{
+			//Distance in game is actually tiny, so in most cases distance to the center
+			//will be less than one. We can take advantage of this to generate a higher 
+			//score for smaller distance by subtracting from one.
+			float distanceToMiddle = Mathf.Sqrt(transform.position.x * transform.position.x);
+			float RandomScore = Random.Range(distanceToMiddle, (1.0f - distanceToMiddle));
+			return RandomScore; 
+		}
+		else
+		{
+            return -1;
+		}
 	}
 
     private void DetectedIntruder(GameObject _inDetectedIntruder)
@@ -305,8 +316,8 @@ public class AgentController : MonoBehaviour
                 }
             case STATE.IMPRISONED:
 				{
-                    eCurrentState = STATE.IMPRISONED;
                     v2CurrentVelocity = Vector2.zero;
+                    eCurrentState = STATE.IMPRISONED;
                     break;
 				}
             default:
@@ -328,6 +339,17 @@ public class AgentController : MonoBehaviour
         {
             currentPosition += v2CurrentVelocity * Time.fixedDeltaTime;
             transform.position = currentPosition;
+
+            int iSideModifier = bIsRedTeam ? -1 : 1;
+
+            //If we're pass the middle line, go home.
+            if ((eCurrentState!=STATE.ATTACK && eCurrentState!=STATE.IMPRISONED)  &&
+                (bIsRedTeam ? transform.position.x > 0.0f : transform.position.x < 0.0f))
+            {
+                ChangeState(STATE.RETURNHOME);
+                return;
+            }
+
 
             switch (eCurrentState)
             {
@@ -354,14 +376,24 @@ public class AgentController : MonoBehaviour
                     }
                 case STATE.ATTACK:
 					{
-                        CalculateVelocity(Attack());
+                        if(lstOpponentAgentsNearby.Count > 3)
+						{
+                            print("Too many hostiles. Returning home");
+                            ChangeState(STATE.RETURNHOME);
+						}
+						else
+						{
+                            CalculateVelocity(Attack());
+						}
+
                         break;
 					}
                 case STATE.RETURNHOME:
 					{
                         v2TargetPosition.y = transform.position.y;
-                        if(Vector2.Distance(v2TargetPosition,transform.position) < kfBrakeDistance/2)
+                        if(Vector2.Distance(v2TargetPosition,transform.position) < kfBrakeDistance*2)
 						{
+                            bbHomeBoard.SafelyReturnedHome();
                             ChangeState(STATE.IDLE);
 						}
                         else
@@ -388,34 +420,33 @@ public class AgentController : MonoBehaviour
     /// <param name="collision"></param>
 	private void OnCollisionEnter2D(Collision2D collision)
 	{
-        Flag flag = collision.gameObject.GetComponent<Flag>();
         if (collision.collider.tag == "WallNS")
-		{
+        {
             v2CurrentVelocity.y *= -1.0f;
-		}
-		else if(collision.collider.tag == "WallWE")
-		{
+        }
+        else if (collision.collider.tag == "WallWE")
+        {
             v2CurrentVelocity.x *= -1.0f;
-		}
-        else if(collision.collider.tag == "Agent" && tlmpHomeArea.HasTile(tlmpHomeArea.WorldToCell(collision.transform.position)))
-		{
+        }
+        else if (collision.collider.tag == "Agent")
+        {
             AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
-            if(collidedAgent && collidedAgent.bIsRedTeam!=bIsRedTeam)
-			{
+            if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam &&
+                tlmpHomeArea.HasTile(tlmpHomeArea.WorldToCell(collision.transform.position)))
+            {
                 print("Collided with opponent");
                 collidedAgent.ImprisonThisAgent();
+            }
+            else if (eCurrentState==STATE.ATTACK && collidedAgent && collidedAgent.bIsRedTeam == bIsRedTeam &&
+                collidedAgent.bIsImprisoned)
+			{
+                print("Rescued a captive");
+                bbHomeBoard.RescueSuccess();
+                bbHomeBoard.ReturningHome();
+                collidedAgent.ChangeState(STATE.RETURNHOME);
+                ChangeState(STATE.RETURNHOME);
 			}
 		}
-        //else if (/*!collision.collider.isTrigger &&*/  flag != null && !flag.GetIfHeld() &&
-        //        !bHoldingFlag && (flag.IsRedFlag() != bIsRedTeam))
-        //{
-        //        //agent.SetHoldingFlag();
-        //        flag.SetIsHeld(true);
-        //        bHoldingFlag = true;
-        //        flag.transform.SetParent(this.transform);
-        //        flag.transform.position = this.transform.position;
-        //        ChangeState(STATE.RETURNHOME);
-        //}
     }
 
 	private void OnTriggerEnter2D(Collider2D collision)
@@ -433,11 +464,20 @@ public class AgentController : MonoBehaviour
 						lstOpponentAgentsNearby.Add(collision.gameObject, new PrevPosition { pos = collision.transform.position });
 					}
 				}
-				else if(collidedAgent.bIsRedTeam == bIsRedTeam && collidedAgent.GetIfImprisoned())
+				else if(eCurrentState == STATE.ATTACK && collidedAgent.bIsRedTeam == bIsRedTeam && collidedAgent.GetIfImprisoned())
 				{
+                    print("Captive nearby");
                     v2TargetPosition = collidedAgent.transform.position;
                 } 
 			}
+        }
+        else if(eCurrentState==STATE.ATTACK && collision.tag == "Flag" && !bHoldingFlag)
+		{
+            Flag flag = collision.gameObject.GetComponent<Flag>();
+            if(flag)
+			{
+                v2TargetPosition = flag.transform.position;
+            }
         }
 	}
 
@@ -504,17 +544,17 @@ public class AgentController : MonoBehaviour
 	{
         Vector2 fleeForce = Vector2.zero;
         Vector2 currentTargetPosition = v2TargetPosition;
-        //Dictionary<GameObject, PrevPosition>.KeyCollection lstHostileAgents = lstOpponentAgentsNearby.Keys;
+
         if (lstOpponentAgentsNearby.Count > 0)
 		{
             foreach (var hostile in lstOpponentAgentsNearby.Keys)
 			{
-                fleeForce += Evade(hostile);
+                fleeForce += Flee(hostile.transform.position);
 			}
 		}
 
         v2TargetPosition = currentTargetPosition;
-        fleeForce = fleeForce.normalized * kfMaxForce;//Vector2.ClampMagnitude(fleeForce, kfMaxForce);
+
         Vector2 GoToForce = GoTo();
         Vector2 resultantForce =    (GoToForce * (fleeForce.magnitude>0?0.1f:1.0f)) + 
                                     (fleeForce * (GoToForce.magnitude>0?0.9f:1.0f));
@@ -616,12 +656,10 @@ public class AgentController : MonoBehaviour
         Vector2 desiredVelocity;
         Vector2 steeringForce;
 
-        //float angleToTarget = Vector2.Angle(targetPosition, currentPosition);
-
         desiredVelocity = (currentPosition - targetPosition).normalized * kfMaxSpeed;
         steeringForce = desiredVelocity - currentVelocity;
         steeringForce /= kfMass;
-        steeringForce = Vector2.ClampMagnitude(steeringForce, kfMaxForce);
+        steeringForce = Vector2.ClampMagnitude(steeringForce, kfMaxFleeForce);
         return steeringForce;
     }
 

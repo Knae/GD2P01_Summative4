@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 1174471322150416092}
   m_Layer: 0
   m_Name: Flag
-  m_TagString: Untagged
+  m_TagString: Flag
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -45,10 +45,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: faced4eff64234a4289f7e8238dabf58, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  v2FlagArea_Red: {x: 0, y: 0, z: 0}
-  v2FlagArea_Blue: {x: 0, y: 0, z: 0}
+  flgctrlCentral: {fileID: 0}
   bIsRedFlag: 1
   bIsHeld: 0
+  bIsCaptured: 0
   bIsFlagAreaSet: 0
   sprtFlagSprites:
   - {fileID: 5503460646655229670, guid: 22c50a1a138cc784d8cbe8312397d664, type: 3}

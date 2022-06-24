@@ -27,6 +27,7 @@ public class BlackBoard : MonoBehaviour
     [SerializeField] private GameObject[] objTeamObjects;
     [SerializeField] private bool bIsAttacking = false;
     [SerializeField] private int iAgentsCaptured = 0;
+    [SerializeField] private int iAgentsReturning = 0;
     [SerializeField] private int iNumberOfAgents = 5;
 
     // Start is called before the first frame update
@@ -93,13 +94,14 @@ public class BlackBoard : MonoBehaviour
 			} 
 		}
 
-        //If we're the blue side and not already attacking,
-        //Check each agent for a random score to attack
-        if(!bIsAttacking && !bIsRedSide)
+        //If we're the blue side and not already attacking and we still have 1/3 active agents,
+        //Check each available agent for a random score to attack
+        if(!bIsAttacking && !bIsRedSide && iAgentsCaptured<( (2*iNumberOfAgents) /3))
 		{
             float highestScore = 0;
-            int indexOfHighestScore = 0;
-            for(int i = 0; i<iNumberOfAgents;i++)
+            int indexOfHighestScore =-1;
+            bool someoneIsAlreadyAttacking = false;
+            for(int i = 0; (i<iNumberOfAgents) && !someoneIsAlreadyAttacking;i++)
 			{
                 AgentController agentController = objTeamObjects[i].GetComponent<AgentController>();
                 if(agentController && !agentController.GetIfImprisoned())
@@ -109,19 +111,46 @@ public class BlackBoard : MonoBehaviour
 					{
                         indexOfHighestScore = i;
 					}
+					else if(score == -1)
+					{
+                        someoneIsAlreadyAttacking = true;
+                        bIsAttacking = true;
+					}
 				}
             }
 
-            //Get the highest score and tell the agent 
-            //its request to attack is approved
-            AgentController volunteeredAgent = objTeamObjects[indexOfHighestScore].GetComponent<AgentController>();
-            volunteeredAgent.ApproveAttackRequest(false);
-            bIsAttacking = true;
+            //Only proceed if we're doubly sure no one is attacking and
+            //we found a volunteer
+			if (!someoneIsAlreadyAttacking && indexOfHighestScore >= 0)
+			{
+				//Get the highest score and tell the agent 
+				//its request to attack is approved
+				AgentController volunteeredAgent = objTeamObjects[indexOfHighestScore].GetComponent<AgentController>();
+				volunteeredAgent.ApproveAttackRequest(iAgentsCaptured>0);
+				bIsAttacking = true; 
+			}
         }
+    }
+
+    public void ReturningHome()
+    {
+        iAgentsReturning++;
+    }
+
+    public void SafelyReturnedHome()
+	{
+        bIsAttacking = false;
+        iAgentsReturning--;
+        if(iAgentsReturning<=0)
+		{
+            iAgentsReturning = 0;
+            bIsAttacking = false;
+		}
     }
 
     public void RescueSuccess()
 	{
+        //bIsAttacking = false;
         iAgentsCaptured--;
     }
 
@@ -134,6 +163,10 @@ public class BlackBoard : MonoBehaviour
     {
         bIsAttacking = false;
         iAgentsCaptured++;
+        if(iAgentsReturning>0)
+		{
+            iAgentsReturning--;
+		}
     }
 
     /// <summary>
