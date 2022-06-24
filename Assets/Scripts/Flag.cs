@@ -10,7 +10,6 @@ public class Flag : MonoBehaviour
     [SerializeField] private bool bIsRedFlag = true;
     [SerializeField] private bool bIsHeld = false;
     [SerializeField] private bool bIsCaptured = false;
-    [SerializeField] private bool bIsFlagAreaSet = false;
     [Header("FlagSprites")]
     [SerializeField] private Sprite[] sprtFlagSprites;
 
@@ -39,22 +38,31 @@ public class Flag : MonoBehaviour
 
     public void FlagCaptured()
 	{
-        transform.SetParent(null);
-        bIsHeld = false;
-        bIsCaptured = true;
+		if (!bIsCaptured)
+		{
+			flgctrlCentral.IncrementScore(!bIsRedFlag);
 
-        //If it's a red flag, then we want it moved to the blue area
-        //Similarly for the score
-        StaticVariables.IncrementScore(!bIsRedFlag);
-        transform.position = flgctrlCentral.GeneratePositionInFlagArea(!bIsRedFlag);
+			transform.SetParent(null);
+			bIsHeld = false;
+			bIsCaptured = true;
 
-        if (bIsRedFlag)
-        {
-            print("Red flag captured, now in blue area");
-        }
-        else
-        {
-            print("Blue flag captured, now in red area");
+			//If it's a red flag, then we want it moved to the blue area
+			//Similarly for the score
+
+			transform.position = flgctrlCentral.GeneratePositionInFlagArea(!bIsRedFlag);
+
+			if (bIsRedFlag)
+			{
+				print("Red flag captured, now in blue area");
+			}
+			else
+			{
+				print("Blue flag captured, now in red area");
+			} 
+		}
+		else
+		{
+            print("Flag already in captured state");
         }
     }
 
@@ -100,7 +108,7 @@ public class Flag : MonoBehaviour
         AgentController agent = collision.gameObject.GetComponent<AgentController>();
 		if(!collision.isTrigger && !bIsHeld && agent != null && (agent.GetIfRedTeam() != bIsRedFlag))
 		{
-			if (!agent.IsHoldingFlag())
+			if (!agent.IsHoldingFlag() && !bIsHeld && !bIsCaptured)
 			{
 				agent.SetHoldingFlag();
                 bIsHeld = true;

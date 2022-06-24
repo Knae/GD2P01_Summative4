@@ -14,8 +14,12 @@ public class FlagControl : MonoBehaviour
     [Header("ScoreDisplay")]
     [SerializeField] private Text txtdispScore_Red;
     [SerializeField] private Text txtdispScore_Blue;
+    [SerializeField] static private int iScore_Red = 0;
+    [SerializeField] static private int iScore_Blue = 0;
     [Header("Prefabs")]
     [SerializeField] private GameObject objFlagPrefab;
+    [Header("Connected Objects")]
+    [SerializeField] private GameObject objEndGameMenu;
 
     // Start is called before the first frame update
     void Start()
@@ -28,10 +32,51 @@ public class FlagControl : MonoBehaviour
         txtdispScore_Blue.text = "0";
     }
 
-    public Vector2 GeneratePositionInFlagArea(bool _inIsRedArea)
+    /// <summary>
+    /// Quick and dirty end game algorithm
+    /// </summary>
+	private void Update()
+	{
+		if(iScore_Blue == 4)
+		{
+            objEndGameMenu.SetActive(true);
+            objEndGameMenu.GetComponent<EndGameText>().EndGame(false) ;
+		}
+        else if (iScore_Red == 4)
+		{
+            objEndGameMenu.SetActive(true);
+            objEndGameMenu.GetComponent<EndGameText>().EndGame(true);
+        }
+
+        if(Input.GetKeyDown(KeyCode.Escape))
+		{
+            objEndGameMenu.SetActive(true);
+            objEndGameMenu.GetComponent<EndGameText>().ExitMenu();
+        }
+	}
+
+    public void RedHasNoAgents()
+	{
+        objEndGameMenu.SetActive(true);
+        objEndGameMenu.GetComponent<EndGameText>().EndGame(false);
+    }
+
+	public void IncrementScore(bool _inIsRedTeam)
+	{
+		if (_inIsRedTeam)
+		{
+			iScore_Red++;
+		}
+		else
+		{
+			iScore_Blue++;
+		}
+	}
+
+	public Vector2 GeneratePositionInFlagArea(bool _inIsRedArea)
     {
-        txtdispScore_Red.text = StaticVariables.GetScore(true).ToString();
-        txtdispScore_Blue.text = StaticVariables.GetScore(false).ToString();
+        txtdispScore_Red.text = iScore_Red.ToString();
+        txtdispScore_Blue.text = iScore_Blue.ToString();
 
         Vector3 generatedPosition = new Vector2(Random.Range(-fFlagSpawnRadius, fFlagSpawnRadius), Random.Range(-fFlagSpawnRadius, fFlagSpawnRadius));
         generatedPosition = Vector3.ClampMagnitude(generatedPosition, fFlagSpawnRadius);

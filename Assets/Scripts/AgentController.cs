@@ -10,11 +10,10 @@ public class AgentController : MonoBehaviour
         NONE,
         IDLE,
         WANDER,
-        //FLEE,
+        CHASE,
         ATTACK,
         RETURNHOME,
         IMPRISONED,
-        //GETHIT,
         MAX_NONE,
     }
 
@@ -44,7 +43,7 @@ public class AgentController : MonoBehaviour
 
 
     [Header("Debug")]
-    [SerializeField] private Dictionary<GameObject, PrevPosition> lstOpponentAgentsNearby;
+    [SerializeField] private Dictionary<GameObject, PrevPosition> dictOpponentAgentsNearby;
     [SerializeField] private GameObject objTarget;
     [SerializeField] private STATE      eCurrentState = STATE.IDLE;
     [SerializeField] private Vector2    v2CurrentVelocity = Vector2.zero;
@@ -53,18 +52,19 @@ public class AgentController : MonoBehaviour
     [SerializeField] private Vector2    v2HostilePrisonAreaPos = Vector2.zero;
     [SerializeField] private float      fDelayCounter = 0.0f;
     [SerializeField] private float      fWanderCounter = 0.0f;
-    [SerializeField] private float      fCurrentSpeed = 0.0f;
-    [SerializeField] private float      fCurrentAccel = 0.0f;
+    [SerializeField] private bool       bIsFleeing = false;
     [SerializeField] private bool       bIsRedTeam = true;
     [SerializeField] private bool       bIsPlayerControlled = false;
     [SerializeField] private bool       bHoldingFlag = false;
-    [SerializeField] private bool       bIsImprisoned = false;
+	[SerializeField] private bool       bTargetIntruderSighted = false;
 
     //Constants
     const float kfMass = 1.0f;
     const float kfMinDelay = 2.0f;
     const float kfMaxDelay = 5.0f;
+    const float kfAttackTimeout = 10.0f;
     const float kfMaxSpeed = 0.5f;
+    const float kfMaxFleeSpeed = 0.55f;
     const float kfMaxForce = 0.25f;
     const float kfMaxFleeForce = 0.4f;
     const float kfFleeDistance = 0.3f;
@@ -74,11 +74,15 @@ public class AgentController : MonoBehaviour
     const float kfWanderDistance = 0.16f;
     const float kfWanderAngle = 30.0f;
     const float kfWanderUpdateTime = 0.5f;
+    const int   kiTooManyHostiles = 2;
 
     // Start is called before the first frame update
     void Start()
     {
-        lstOpponentAgentsNearby = new Dictionary<GameObject, PrevPosition>();
+		if (dictOpponentAgentsNearby == null)
+		{
+			dictOpponentAgentsNearby = new Dictionary<GameObject, PrevPosition>(); 
+		}
 
         if (rgdbdAgent == null)
         {
@@ -89,6 +93,7 @@ public class AgentController : MonoBehaviour
 	private void Awake()
 	{
         ChangeState(STATE.IDLE);
+        objTarget = null;
         fDelayCounter = 0.0f;
     }
 	// Update is called once per frame
@@ -104,7 +109,7 @@ public class AgentController : MonoBehaviour
             fWanderCounter -= Time.deltaTime;
         }
 
-        if (bIsPlayerControlled)
+        if (bIsPlayerControlled && !GetIfImprisoned())
         {
             v2CurrentVelocity.x = Input.GetAxis("Horizontal");
             v2CurrentVelocity.y = Input.GetAxis("Vertical");
@@ -147,7 +152,12 @@ public class AgentController : MonoBehaviour
             objMarkerCreated = null;
         }
         fDelayCounter = 0;
-        ChangeState(STATE.IDLE);
+
+        if(!GetIfImprisoned())
+		{
+            ChangeState(STATE.IDLE);
+		}
+
     }
     /// <summary>
     /// Return if this agent is player controlled
@@ -178,8 +188,26 @@ public class AgentController : MonoBehaviour
 
     public bool GetIfImprisoned()
 	{
-        return bIsImprisoned;
+        return eCurrentState == STATE.IMPRISONED ? true : false; ;
+	} 
+    
+    public bool GetIfAttacking()
+	{
+        return eCurrentState == STATE.ATTACK ? true : false;
+        //return bIsAttacking;
 	}
+    
+    public bool GetIfReturningHome()
+	{
+        return eCurrentState == STATE.RETURNHOME ? true : false;
+	}
+    
+    public bool GetIfPursuing()
+	{
+        return eCurrentState == STATE.CHASE ? true : false;
+	}
+
+
     /// <summary>
     /// Change the agent sprite to the specified colour
     /// Assumes that the red agent and blue agent sprites
@@ -230,9 +258,9 @@ public class AgentController : MonoBehaviour
 
     public void ImprisonThisAgent()
 	{
-        bbHomeBoard.AttackFailed();
-        bIsImprisoned = true;
+        bbHomeBoard.AttackFailed(this.gameObject);
         ChangeState(STATE.IMPRISONED);
+
         transform.position = v2HostilePrisonAreaPos;
         if(bHoldingFlag)
 		{
@@ -241,26 +269,28 @@ public class AgentController : MonoBehaviour
             heldFlag.FlagFreed();
 		}
 	}
+    /// <summary>
+    /// blackboard will 
+    /// </summary>
+    /// <returns></returns>
     public float DecideIfAttack()
 	{
-		if (eCurrentState != STATE.ATTACK)
-		{
-			//Distance in game is actually tiny, so in most cases distance to the center
-			//will be less than one. We can take advantage of this to generate a higher 
-			//score for smaller distance by subtracting from one.
-			float distanceToMiddle = Mathf.Sqrt(transform.position.x * transform.position.x);
-			float RandomScore = Random.Range(distanceToMiddle, (1.0f - distanceToMiddle));
-			return RandomScore; 
-		}
-		else
-		{
-            return -1;
-		}
+		//Distance in game is actually tiny, so in most cases distance to the center
+		//will be less than one. We can take advantage of this to generate a higher 
+		//score for smaller distance by subtracting from one.
+		float distanceToMiddle = Mathf.Sqrt(transform.position.x * transform.position.x);
+		float RandomScore = Random.Range(distanceToMiddle, (1.0f - distanceToMiddle));
+		return RandomScore; 
 	}
 
-    private void DetectedIntruder(GameObject _inDetectedIntruder)
+    public void DetectedIntruder(GameObject _inHostile)
 	{
+        float distanceToIntruder = Vector2.Distance(_inHostile.transform.position, transform.position);
 
+        if(distanceToIntruder < (kfFleeDistance*2))
+		{
+            bbHomeBoard.RequestToPursue(this.gameObject,_inHostile);
+		}
 	}
 
     public void ApproveAttackRequest(bool _inCapturedFriends)
@@ -277,6 +307,27 @@ public class AgentController : MonoBehaviour
         ChangeState(STATE.ATTACK);
     }
 
+
+    public void ApprovePursueRequest(GameObject _inTargetHostile,Vector2 _inPosition)
+	{
+        objTarget = _inTargetHostile;
+        bTargetIntruderSighted = false;
+        v2TargetPosition = _inPosition;
+        ChangeState(STATE.CHASE);
+	}
+
+    public void AnnouncedIntruderNonIssue(GameObject _inHostile)
+	{
+        //Switch out from chase mode if the hostile was target and captured or escaped
+        //OR the target is somehow null
+        if(_inHostile==objTarget || objTarget == null )
+		{
+            objTarget = null;
+            bTargetIntruderSighted = false;
+            ChangeState(STATE.IDLE);
+		}
+	}
+
     /// <summary>
     /// Change the current state
     /// </summary>
@@ -285,39 +336,49 @@ public class AgentController : MonoBehaviour
     {
         Vector2 CurrentPosition = transform.position;
 
+
         switch (_inNewState)
         {
             case STATE.IDLE:
                 {
+                    eCurrentState = STATE.IDLE;
                     fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
                     v2CurrentVelocity = Vector2.zero;
-                    eCurrentState = STATE.IDLE;
                     break;
                 }
             case STATE.WANDER:
                 {
-                    fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
-                    CalculateVelocity(WanderInRandomDirection(Mathf.Sqrt(transform.position.x * transform.position.x)));
                     eCurrentState = STATE.WANDER;
+                    fDelayCounter = Random.Range(kfMinDelay, kfMaxDelay);
+                    bbHomeBoard.CheckIfStillOnReturningSet(this.gameObject);
+                    CalculateVelocity(WanderInRandomDirection(Mathf.Sqrt(transform.position.x * transform.position.x)));
                     break;
                 }
+            case STATE.CHASE:
+				{
+                    eCurrentState = STATE.CHASE;
+                    CalculateVelocity(GoTo());
+                    return;
+				}
             case STATE.ATTACK:
                 {
-                    CalculateVelocity(Attack());
                     eCurrentState = STATE.ATTACK;
+                    fDelayCounter = kfAttackTimeout;
+                    CalculateVelocity(Attack());
                     break;
                 }
             case STATE.RETURNHOME:
                 {
+                    eCurrentState = STATE.RETURNHOME;
+                    bbHomeBoard.ReturningHome(this.gameObject);
                     v2TargetPosition.x = -v2HostileFlagAreaPos.x;
                     CalculateVelocity(Attack());
-                    eCurrentState = STATE.RETURNHOME;
                     break;
                 }
             case STATE.IMPRISONED:
 				{
-                    v2CurrentVelocity = Vector2.zero;
                     eCurrentState = STATE.IMPRISONED;
+                    v2CurrentVelocity = Vector2.zero;
                     break;
 				}
             default:
@@ -330,7 +391,7 @@ public class AgentController : MonoBehaviour
 	{
         Vector2 currentPosition = transform.position;
 
-        if (bIsPlayerControlled)
+        if (bIsPlayerControlled && !GetIfImprisoned())
         {
             currentPosition += v2CurrentVelocity * fMoveSpeed * Time.fixedDeltaTime;
             transform.position = currentPosition;
@@ -342,14 +403,27 @@ public class AgentController : MonoBehaviour
 
             int iSideModifier = bIsRedTeam ? -1 : 1;
 
-            //If we're pass the middle line, go home.
-            if ((eCurrentState!=STATE.ATTACK && eCurrentState!=STATE.IMPRISONED)  &&
+            //If we're pass the middle line, go home. but only if we're no attacking or am imprisoned
+            if ( !GetIfAttacking() && !GetIfImprisoned()  &&
                 (bIsRedTeam ? transform.position.x > 0.0f : transform.position.x < 0.0f))
             {
                 ChangeState(STATE.RETURNHOME);
                 return;
             }
 
+            //If we're pursuing a target and it's gone past the middle, then revert to idle
+            if (GetIfPursuing() &&
+                (bIsRedTeam ? v2TargetPosition.x > 0.0f : v2TargetPosition.x < 0.0f))
+            {
+                if(objTarget != null)
+				{
+                    bbHomeBoard.IntruderDealtWith(objTarget);
+				}
+                objTarget = null;
+                bTargetIntruderSighted = false;
+                ChangeState(STATE.IDLE);
+                return;
+            }
 
             switch (eCurrentState)
             {
@@ -374,11 +448,37 @@ public class AgentController : MonoBehaviour
                         }
                         break;
                     }
+                case STATE.CHASE:
+                    {
+                        if(bTargetIntruderSighted)
+						{
+                            v2TargetPosition = objTarget.transform.position;
+                            CalculateVelocity(GoTo());
+                        }
+						else
+						{
+                            float distanceToIntruder = Vector2.Distance(v2TargetPosition, transform.position);
+
+                            if (distanceToIntruder > (kfBrakeDistance/2.0f))
+						    {
+                                CalculateVelocity(GoTo());
+						    }
+						    else
+						    {
+                                bbHomeBoard.RequestLastPosition(objTarget, v2TargetPosition);
+                                CalculateVelocity(GoTo());
+						    }
+						}
+
+                        
+
+                        break;
+                    }
                 case STATE.ATTACK:
 					{
-                        if(lstOpponentAgentsNearby.Count > 3)
+                        if(dictOpponentAgentsNearby.Count >= kiTooManyHostiles || fDelayCounter < 0)
 						{
-                            print("Too many hostiles. Returning home");
+                            print("Situation abnormal. Returning home");
                             ChangeState(STATE.RETURNHOME);
 						}
 						else
@@ -393,7 +493,7 @@ public class AgentController : MonoBehaviour
                         v2TargetPosition.y = transform.position.y;
                         if(Vector2.Distance(v2TargetPosition,transform.position) < kfBrakeDistance*2)
 						{
-                            bbHomeBoard.SafelyReturnedHome();
+                            bbHomeBoard.SafelyReturnedHome(this.gameObject);
                             ChangeState(STATE.IDLE);
 						}
                         else
@@ -431,18 +531,19 @@ public class AgentController : MonoBehaviour
         else if (collision.collider.tag == "Agent")
         {
             AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
-            if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam &&
+            if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam && !collidedAgent.GetIfImprisoned() &&
                 tlmpHomeArea.HasTile(tlmpHomeArea.WorldToCell(collision.transform.position)))
             {
                 print("Collided with opponent");
                 collidedAgent.ImprisonThisAgent();
+                bbHomeBoard.IntruderDealtWith(collision.gameObject);
             }
-            else if (eCurrentState==STATE.ATTACK && collidedAgent && collidedAgent.bIsRedTeam == bIsRedTeam &&
-                collidedAgent.bIsImprisoned)
+            else if (collidedAgent && collidedAgent.bIsRedTeam == bIsRedTeam &&
+                collidedAgent.GetIfImprisoned() && !GetIfImprisoned())
 			{
                 print("Rescued a captive");
                 bbHomeBoard.RescueSuccess();
-                bbHomeBoard.ReturningHome();
+                //bbHomeBoard.ReturningHome();
                 collidedAgent.ChangeState(STATE.RETURNHOME);
                 ChangeState(STATE.RETURNHOME);
 			}
@@ -458,20 +559,35 @@ public class AgentController : MonoBehaviour
 			{
 				if (collidedAgent.bIsRedTeam != bIsRedTeam)
 				{
-					if (!lstOpponentAgentsNearby.ContainsKey(collision.gameObject))
+					if (!dictOpponentAgentsNearby.ContainsKey(collision.gameObject))
 					{
 						print("Hostile agent is close by and registered");
-						lstOpponentAgentsNearby.Add(collision.gameObject, new PrevPosition { pos = collision.transform.position });
+						dictOpponentAgentsNearby.Add(collision.gameObject, new PrevPosition { pos = collision.transform.position });
 					}
-				}
-				else if(eCurrentState == STATE.ATTACK && collidedAgent.bIsRedTeam == bIsRedTeam && collidedAgent.GetIfImprisoned())
+
+                    //Unless imprisoned or attacking, inform blackboard
+                    if (!GetIfImprisoned() && !GetIfAttacking() && !collidedAgent.GetIfImprisoned())
+                    {
+                        bbHomeBoard.DetectedHostile(collision.gameObject);
+                        bbHomeBoard.AgentPursuingHostile(collision.gameObject);
+                        objTarget = collision.gameObject;
+                        v2TargetPosition = objTarget.transform.position;
+                        ChangeState(STATE.CHASE);
+                    }
+
+                    if(GetIfPursuing() && collision.gameObject == objTarget)
+					{
+                        bTargetIntruderSighted = true;
+					}
+                }
+				else if(GetIfAttacking() && collidedAgent.bIsRedTeam == bIsRedTeam && collidedAgent.GetIfImprisoned())
 				{
                     print("Captive nearby");
                     v2TargetPosition = collidedAgent.transform.position;
                 } 
 			}
         }
-        else if(eCurrentState==STATE.ATTACK && collision.tag == "Flag" && !bHoldingFlag)
+        else if(GetIfAttacking() && collision.tag == "Flag" && !bHoldingFlag)
 		{
             Flag flag = collision.gameObject.GetComponent<Flag>();
             if(flag)
@@ -489,7 +605,7 @@ public class AgentController : MonoBehaviour
             if (collidedAgent && collidedAgent.bIsRedTeam != bIsRedTeam)
             {
                 print("Lost sight of a hostile agent");
-                lstOpponentAgentsNearby.Remove(collision.gameObject);
+                dictOpponentAgentsNearby.Remove(collision.gameObject);
             }
         }
     }
@@ -520,7 +636,7 @@ public class AgentController : MonoBehaviour
 		}
 		else
 		{
-            v2CurrentVelocity = Vector2.ClampMagnitude(v2CurrentVelocity, kfMaxSpeed);
+            v2CurrentVelocity = Vector2.ClampMagnitude(v2CurrentVelocity, bIsFleeing ? kfMaxFleeSpeed : kfMaxSpeed);
 		}
     }
     /// <summary>
@@ -545,11 +661,15 @@ public class AgentController : MonoBehaviour
         Vector2 fleeForce = Vector2.zero;
         Vector2 currentTargetPosition = v2TargetPosition;
 
-        if (lstOpponentAgentsNearby.Count > 0)
+        if (dictOpponentAgentsNearby.Count > 0)
 		{
-            foreach (var hostile in lstOpponentAgentsNearby.Keys)
+            foreach (var hostile in dictOpponentAgentsNearby.Keys)
 			{
-                fleeForce += Flee(hostile.transform.position);
+                //Only add flee force if the hostile is not on home tiles
+                if( !tlmpHomeArea.HasTile(tlmpHomeArea.WorldToCell(hostile.transform.position)) )
+				{
+                    fleeForce += Flee(hostile.transform.position);
+				}
 			}
 		}
 
@@ -558,8 +678,8 @@ public class AgentController : MonoBehaviour
         Vector2 GoToForce = GoTo();
         Vector2 resultantForce =    (GoToForce * (fleeForce.magnitude>0?0.1f:1.0f)) + 
                                     (fleeForce * (GoToForce.magnitude>0?0.9f:1.0f));
-
-        return Vector2.ClampMagnitude( resultantForce, kfMaxForce);
+        bIsFleeing = fleeForce.magnitude > 0 ? true : false;
+        return Vector2.ClampMagnitude( resultantForce, bIsFleeing ? kfMaxFleeSpeed : kfMaxSpeed );
 	}
     /// <summary>
     /// Seek behaviour. Generates force towards the target position
@@ -713,11 +833,11 @@ public class AgentController : MonoBehaviour
 
         //Guess the hostile entity's future position using the stored previous known position
         Vector2 hostilePosition = _Hostile.transform.position;
-        Vector2 hostileVelocity = (hostilePosition - lstOpponentAgentsNearby[_Hostile].pos) / Time.fixedDeltaTime;
+        Vector2 hostileVelocity = (hostilePosition - dictOpponentAgentsNearby[_Hostile].pos) / Time.fixedDeltaTime;
         //Guess position in 5 frames
         targetPosition = hostilePosition + (hostileVelocity * 5.0f);
         //Update the paired list with the hostile's current position
-        lstOpponentAgentsNearby[_Hostile].pos = hostilePosition;
+        dictOpponentAgentsNearby[_Hostile].pos = hostilePosition;
 
         float distanceToTarget = Vector2.Distance(currentPosition, targetPosition);
 

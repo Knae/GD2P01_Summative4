@@ -5,6 +5,17 @@ using UnityEngine.Tilemaps;
 
 public class BlackBoard : MonoBehaviour
 {
+    public class LastLocation
+	{
+        public Vector2 v2LastPosition = Vector2.zero;
+        public int iNoOfPursuingAgents = 0;
+
+        public LastLocation(Vector2 _inLocation)
+		{
+            v2LastPosition = _inLocation;
+		}
+	}
+
     [Header("UsedAssets")]
     [SerializeField] GameObject objAgentPrefab;
     [SerializeField] GameObject objCameraPrefab;
@@ -12,7 +23,6 @@ public class BlackBoard : MonoBehaviour
     [Header("Settings")]
     [SerializeField] private bool bIsRedSide = true;
     [SerializeField] private float fSpawnRadius = 0.5f;
-    [SerializeField] private float fDistanceBetweenSpawn = 0.25f;
 
     [Header("AgentsInfo")]
     [SerializeField] private GameObject objAttackingAgent;
@@ -24,11 +34,16 @@ public class BlackBoard : MonoBehaviour
     [SerializeField] private Tilemap    tlmpHomeArea;
 
     [Header("Debug")]
+    [SerializeField] private FlagControl flgctrlDesperateMeasures;
     [SerializeField] private GameObject[] objTeamObjects;
+    [SerializeField] private HashSet<GameObject> setReturningObjects;
+    [SerializeField] private Dictionary<GameObject, LastLocation> dictDetectedHostiles;
     [SerializeField] private bool bIsAttacking = false;
     [SerializeField] private int iAgentsCaptured = 0;
-    [SerializeField] private int iAgentsReturning = 0;
     [SerializeField] private int iNumberOfAgents = 5;
+    [SerializeField] private float fCountUpTimer = 0;
+
+    const float kfAttackTimeout = 15.0f;
 
     // Start is called before the first frame update
     void Start()
@@ -43,6 +58,16 @@ public class BlackBoard : MonoBehaviour
         if(objAgentPrefab == null)
 		{
             print("WARNING: No agent prefab attached to blackboard");
+		}
+
+        if(dictDetectedHostiles == null)
+		{
+            dictDetectedHostiles = new Dictionary<GameObject, LastLocation>();
+		}
+        
+        if(setReturningObjects == null)
+		{
+            setReturningObjects = new HashSet<GameObject>();
 		}
 
         objTeamObjects = new GameObject[iNumberOfAgents];
@@ -78,9 +103,15 @@ public class BlackBoard : MonoBehaviour
             objTeamObjects[i] = newAgent;
 		}
     }
-
-    // Update is called once per frame
-    void Update()
+	private void FixedUpdate()
+	{
+		if(fCountUpTimer>0)
+		{
+            fCountUpTimer -= Time.fixedDeltaTime;
+		}
+	}
+	// Update is called once per frame
+	void Update()
     {
 		if (bIsRedSide)
 		{
@@ -92,11 +123,18 @@ public class BlackBoard : MonoBehaviour
 			{
 				SwitchPlayerToNextAgent();
 			} 
+
+            if(iAgentsCaptured >= iNumberOfAgents && flgctrlDesperateMeasures!=null)
+			{
+                flgctrlDesperateMeasures.RedHasNoAgents();
+			}
 		}
 
-        //If we're the blue side and not already attacking and we still have 1/3 active agents,
+        //If we're the blue side and not already attacking and we still have 1/3 active agents and 
+        //am not waiting for returning agents
         //Check each available agent for a random score to attack
-        if(!bIsAttacking && !bIsRedSide && iAgentsCaptured<( (2*iNumberOfAgents) /3))
+        if(!bIsRedSide && (!bIsAttacking || fCountUpTimer<=0) && 
+           setReturningObjects.Count<=0 && iAgentsCaptured < ( (2*iNumberOfAgents) /3))
 		{
             float highestScore = 0;
             int indexOfHighestScore =-1;
@@ -104,7 +142,7 @@ public class BlackBoard : MonoBehaviour
             for(int i = 0; (i<iNumberOfAgents) && !someoneIsAlreadyAttacking;i++)
 			{
                 AgentController agentController = objTeamObjects[i].GetComponent<AgentController>();
-                if(agentController && !agentController.GetIfImprisoned())
+                if(agentController && !agentController.GetIfImprisoned() && !agentController.GetIfAttacking())
 				{
                     float score = agentController.DecideIfAttack();
                     if(score > highestScore)
@@ -115,7 +153,8 @@ public class BlackBoard : MonoBehaviour
 					{
                         someoneIsAlreadyAttacking = true;
                         bIsAttacking = true;
-					}
+                        fCountUpTimer = kfAttackTimeout;
+                    }
 				}
             }
 
@@ -127,31 +166,43 @@ public class BlackBoard : MonoBehaviour
 				//its request to attack is approved
 				AgentController volunteeredAgent = objTeamObjects[indexOfHighestScore].GetComponent<AgentController>();
 				volunteeredAgent.ApproveAttackRequest(iAgentsCaptured>0);
+                fCountUpTimer = kfAttackTimeout;
 				bIsAttacking = true; 
 			}
         }
     }
 
-    public void ReturningHome()
+    public void ReturningHome(GameObject _inAgentObject)
     {
-        iAgentsReturning++;
+		if (!setReturningObjects.Contains(_inAgentObject))
+		{
+			setReturningObjects.Add(_inAgentObject); 
+		}
     }
 
-    public void SafelyReturnedHome()
+    public void SafelyReturnedHome(GameObject _inAgentObject)
 	{
-        bIsAttacking = false;
-        iAgentsReturning--;
-        if(iAgentsReturning<=0)
+        if(setReturningObjects.Contains(_inAgentObject))
 		{
-            iAgentsReturning = 0;
-            bIsAttacking = false;
+            setReturningObjects.Remove(_inAgentObject);
 		}
+    }
+
+    public void CheckIfStillOnReturningSet(GameObject _inAgentObject)
+	{
+        if (setReturningObjects.Contains(_inAgentObject))
+        {
+            setReturningObjects.Remove(_inAgentObject);
+        }
     }
 
     public void RescueSuccess()
 	{
-        //bIsAttacking = false;
         iAgentsCaptured--;
+        //if (iAgentsReturning > 0)
+        //{
+        //    iAgentsReturning--;
+        //}
     }
 
     public void AttackSuccess()
@@ -159,14 +210,124 @@ public class BlackBoard : MonoBehaviour
         bIsAttacking = false;
 	}
 
-    public void AttackFailed()
+    public void AttackFailed(GameObject _inAgentObject)
     {
+        if (setReturningObjects.Contains(_inAgentObject))
+        {
+            setReturningObjects.Remove(_inAgentObject);
+        }
         bIsAttacking = false;
         iAgentsCaptured++;
-        if(iAgentsReturning>0)
+    }
+
+    public void DetectedHostile(GameObject _inHostile)
+	{
+        //Unused, just to enable the TryGetValue function
+        LastLocation temp;
+
+        //If we already know of this hostile, update its know position
+        //Otherwise add it to the list of known hostiles
+        if(dictDetectedHostiles.TryGetValue(_inHostile, out temp))
 		{
-            iAgentsReturning--;
-		}
+            dictDetectedHostiles[_inHostile].v2LastPosition = _inHostile.transform.position;
+        }
+		else
+		{
+            dictDetectedHostiles.Add(_inHostile, new LastLocation(_inHostile.transform.position));
+            BroadcastToAllDetectedHostile(_inHostile);
+        }
+    }
+
+    public void AgentPursuingHostile(GameObject _inHostile)
+	{
+        //Unused, just to enable the TryGetValue function
+        LastLocation temp;
+        //Agent is chasing it, so it should already be known.
+        //But just in case
+        if (dictDetectedHostiles.TryGetValue(_inHostile, out temp))
+        {
+            dictDetectedHostiles[_inHostile].iNoOfPursuingAgents ++;
+        }
+        else
+        {
+            dictDetectedHostiles.Add(_inHostile, new LastLocation(_inHostile.transform.position));
+            dictDetectedHostiles[_inHostile].iNoOfPursuingAgents++;
+        }
+    }
+
+    public void UpdatePursuedOnHostile(GameObject _inHostile)
+	{
+        //Unused, just to enable the TryGetValue function
+        LastLocation temp;
+        //Agent is chasing it, so it should already be known.
+        //But just in case
+        if (dictDetectedHostiles.TryGetValue(_inHostile, out temp))
+        {
+            dictDetectedHostiles[_inHostile].v2LastPosition = _inHostile.transform.position;
+        }
+        else
+        {
+            dictDetectedHostiles.Add(_inHostile, new LastLocation(_inHostile.transform.position));
+        }
+    }
+
+    public void RequestToPursue(GameObject _inAgent ,GameObject _inHostile)
+	{
+        //Unused, just to enable the TryGetValue function
+        LastLocation temp;
+        //Agent is requesting to chase, so it should already be known.
+        //But just in case
+        if (dictDetectedHostiles.TryGetValue(_inHostile, out temp))
+        {
+            if(temp.iNoOfPursuingAgents < 2)
+			{
+                AgentController requester = _inAgent.GetComponent<AgentController>();
+                if(requester)
+				{
+                    dictDetectedHostiles[_inHostile].iNoOfPursuingAgents++;
+                    requester.ApprovePursueRequest(_inHostile, dictDetectedHostiles[_inHostile].v2LastPosition);
+				}
+            }
+        }
+        else
+        {
+            dictDetectedHostiles.Add(_inHostile, new LastLocation(_inHostile.transform.position));
+        }
+    }
+
+    public void IntruderDealtWith(GameObject _inHostile)
+	{
+        LastLocation temp;
+        //Agent is informing a captured intruder, so it should already be known.
+        //But just in case, check. if not, then just broadcast the capture
+        if (dictDetectedHostiles.TryGetValue(_inHostile, out temp))
+        {
+            dictDetectedHostiles.Remove(_inHostile);
+        }
+
+        for (int i = 0; (i < iNumberOfAgents); i++)
+        {
+            AgentController agentController = objTeamObjects[i].GetComponent<AgentController>();
+            if (agentController && agentController.GetIfPursuing())
+            {
+                agentController.AnnouncedIntruderNonIssue(_inHostile);
+            }
+        }
+    }
+
+    public void RequestLastPosition(GameObject _inTargetHostile, Vector2 _outRequestedPosition)
+	{
+        //Unused, just to enable the TryGetValue function
+        LastLocation temp;
+        //Agent was moving to last location, so it should already be known.
+        //But just in case it's not in the list, then add it
+        if (!dictDetectedHostiles.TryGetValue(_inTargetHostile, out temp))
+        {
+            dictDetectedHostiles.Add(_inTargetHostile, new LastLocation(_inTargetHostile.transform.position));
+
+        }
+
+        _outRequestedPosition = dictDetectedHostiles[_inTargetHostile].v2LastPosition;
     }
 
     /// <summary>
@@ -216,6 +377,19 @@ public class BlackBoard : MonoBehaviour
                 agent = objTeamObjects[i].GetComponent<AgentController>();
                 agent.TogglePlayerControl(objCameraPrefab);
                 break;
+            }
+        }
+    }
+
+    private void BroadcastToAllDetectedHostile(GameObject _inHostile)
+    {
+        for (int i = 0; (i < iNumberOfAgents); i++)
+        {
+            AgentController agentController = objTeamObjects[i].GetComponent<AgentController>();
+            if (agentController && !agentController.GetIfImprisoned() &&
+                !agentController.GetIfAttacking() && !agentController.GetIfReturningHome())
+            {
+                agentController.DetectedIntruder(_inHostile);
             }
         }
     }
