@@ -3,8 +3,17 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 
+/// <summary>
+/// Blackboard script for coordinating all the agents in
+/// the team
+/// </summary>
 public class BlackBoard : MonoBehaviour
 {
+    /// <summary>
+    /// class specifically to store information
+    /// in a dictionary that can be change when iterating through
+    /// without Unity bitching and moaning about changing values
+    /// </summary>
     public class LastLocation
 	{
         public Vector2 v2LastPosition = Vector2.zero;
@@ -70,8 +79,10 @@ public class BlackBoard : MonoBehaviour
             setReturningObjects = new HashSet<GameObject>();
 		}
 
+        //Generate the agents for this blackboard and add them to the array of agents
+        //Spawn them in random positions and set the opponent's flag and prison area
+        //set the colour accordingly
         objTeamObjects = new GameObject[iNumberOfAgents];
-
         for(int i=0; i<iNumberOfAgents; i++)
 		{
             //Generate a random position within a radius and add it to this object's position
@@ -103,6 +114,11 @@ public class BlackBoard : MonoBehaviour
             objTeamObjects[i] = newAgent;
 		}
     }
+    /// <summary>
+    /// This is mainly for making sure the blackboard isn't stuck
+    /// on attacking for unusually long time. Usually means something 
+    /// forgot to tell the blackboard it was done or went home
+    /// </summary>
 	private void FixedUpdate()
 	{
 		if(fCountUpTimer>0)
@@ -110,11 +126,13 @@ public class BlackBoard : MonoBehaviour
             fCountUpTimer -= Time.fixedDeltaTime;
 		}
 	}
+
 	// Update is called once per frame
 	void Update()
     {
 		if (bIsRedSide)
 		{
+            //Check keys for player switching agents
 			if (Input.GetKeyDown(KeyCode.Q))
 			{
 				SwitchPlayerToPrevAgent();
@@ -124,6 +142,7 @@ public class BlackBoard : MonoBehaviour
 				SwitchPlayerToNextAgent();
 			} 
 
+            //if no agents left for the player, trigger end game
             if(iAgentsCaptured >= iNumberOfAgents && flgctrlDesperateMeasures!=null)
 			{
                 flgctrlDesperateMeasures.RedHasNoAgents();
@@ -172,6 +191,15 @@ public class BlackBoard : MonoBehaviour
         }
     }
 
+    //========================================================
+    //this section is mostly function for agents to communicate
+    //with the blacboard
+    //========================================================
+
+    /// <summary>
+    /// an agent is now returning home. Add it to the hashSet
+    /// </summary>
+    /// <param name="_inAgentObject"></param>
     public void ReturningHome(GameObject _inAgentObject)
     {
 		if (!setReturningObjects.Contains(_inAgentObject))
@@ -179,7 +207,10 @@ public class BlackBoard : MonoBehaviour
 			setReturningObjects.Add(_inAgentObject); 
 		}
     }
-
+    /// <summary>
+    /// An agent reached home safely. Remove it from the hashSet
+    /// </summary>
+    /// <param name="_inAgentObject"></param>
     public void SafelyReturnedHome(GameObject _inAgentObject)
 	{
         if(setReturningObjects.Contains(_inAgentObject))
@@ -187,7 +218,11 @@ public class BlackBoard : MonoBehaviour
             setReturningObjects.Remove(_inAgentObject);
 		}
     }
-
+    /// <summary>
+    /// An agent is checking if it's still in the list.
+    /// Usually means it forgot to inform us it's home
+    /// </summary>
+    /// <param name="_inAgentObject"></param>
     public void CheckIfStillOnReturningSet(GameObject _inAgentObject)
 	{
         if (setReturningObjects.Contains(_inAgentObject))
@@ -195,21 +230,27 @@ public class BlackBoard : MonoBehaviour
             setReturningObjects.Remove(_inAgentObject);
         }
     }
-
+    /// <summary>
+    /// agent informing that it successfully released
+    /// a captive. 
+    /// </summary>
     public void RescueSuccess()
 	{
         iAgentsCaptured--;
-        //if (iAgentsReturning > 0)
-        //{
-        //    iAgentsReturning--;
-        //}
     }
 
+    /// <summary>
+    /// An agent that was attacking is reporting success
+    /// </summary>
     public void AttackSuccess()
 	{
         bIsAttacking = false;
 	}
-
+    /// <summary>
+    /// An agent that was attacking is reporting failure and was
+    /// captured
+    /// </summary>
+    /// <param name="_inAgentObject"></param>
     public void AttackFailed(GameObject _inAgentObject)
     {
         if (setReturningObjects.Contains(_inAgentObject))
@@ -219,7 +260,11 @@ public class BlackBoard : MonoBehaviour
         bIsAttacking = false;
         iAgentsCaptured++;
     }
-
+    /// <summary>
+    /// An agent is reporting that it spotted an hostile
+    /// Add the intruder to the collection of detected enemies
+    /// </summary>
+    /// <param name="_inHostile"></param>
     public void DetectedHostile(GameObject _inHostile)
 	{
         //Unused, just to enable the TryGetValue function
@@ -237,7 +282,10 @@ public class BlackBoard : MonoBehaviour
             BroadcastToAllDetectedHostile(_inHostile);
         }
     }
-
+    /// <summary>
+    /// An agent is reporting that it is pursuing a hostile
+    /// </summary>
+    /// <param name="_inHostile"></param>
     public void AgentPursuingHostile(GameObject _inHostile)
 	{
         //Unused, just to enable the TryGetValue function
@@ -254,7 +302,10 @@ public class BlackBoard : MonoBehaviour
             dictDetectedHostiles[_inHostile].iNoOfPursuingAgents++;
         }
     }
-
+    /// <summary>
+    /// An agent is updating the last known location of an intruder it is chasing
+    /// </summary>
+    /// <param name="_inHostile"></param>
     public void UpdatePursuedOnHostile(GameObject _inHostile)
 	{
         //Unused, just to enable the TryGetValue function
@@ -271,6 +322,13 @@ public class BlackBoard : MonoBehaviour
         }
     }
 
+
+    /// <summary>
+    /// an agent intends to attend to pursue a reported intruder
+    /// Check that no more than 2 agents are already pursuing
+    /// </summary>
+    /// <param name="_inAgent"></param>
+    /// <param name="_inHostile"></param>
     public void RequestToPursue(GameObject _inAgent ,GameObject _inHostile)
 	{
         //Unused, just to enable the TryGetValue function
@@ -294,7 +352,11 @@ public class BlackBoard : MonoBehaviour
             dictDetectedHostiles.Add(_inHostile, new LastLocation(_inHostile.transform.position));
         }
     }
-
+    /// <summary>
+    /// An agent is reporting a hostile captured or chased off
+    /// Inform all pursuing agents of the specific hostile no longer an issue
+    /// </summary>
+    /// <param name="_inHostile"></param>
     public void IntruderDealtWith(GameObject _inHostile)
 	{
         LastLocation temp;
@@ -314,7 +376,11 @@ public class BlackBoard : MonoBehaviour
             }
         }
     }
-
+    /// <summary>
+    /// An agent is requesting the last known location of a reported intruder
+    /// </summary>
+    /// <param name="_inTargetHostile"></param>
+    /// <param name="_outRequestedPosition"></param>
     public void RequestLastPosition(GameObject _inTargetHostile, Vector2 _outRequestedPosition)
 	{
         //Unused, just to enable the TryGetValue function
@@ -329,6 +395,7 @@ public class BlackBoard : MonoBehaviour
 
         _outRequestedPosition = dictDetectedHostiles[_inTargetHostile].v2LastPosition;
     }
+    //========================================================
 
     /// <summary>
     /// Display radius at which agent starts to flee
@@ -338,6 +405,9 @@ public class BlackBoard : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position, fSpawnRadius);
     }
 
+    /// <summary>
+    /// Swicth player to the next agent in the array
+    /// </summary>
     private void SwitchPlayerToNextAgent()
 	{
         int i = 0;
@@ -359,7 +429,9 @@ public class BlackBoard : MonoBehaviour
 		}
 
     }
-
+    /// <summary>
+    /// Swicth player to the previous agent in the array
+    /// </summary>
     private void SwitchPlayerToPrevAgent()
     {
         int i = 0;
@@ -380,7 +452,10 @@ public class BlackBoard : MonoBehaviour
             }
         }
     }
-
+    /// <summary>
+    /// Inform all available agents of detected hostile
+    /// </summary>
+    /// <param name="_inHostile"></param>
     private void BroadcastToAllDetectedHostile(GameObject _inHostile)
     {
         for (int i = 0; (i < iNumberOfAgents); i++)

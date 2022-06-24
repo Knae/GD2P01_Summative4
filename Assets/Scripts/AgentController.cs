@@ -31,7 +31,7 @@ public class AgentController : MonoBehaviour
 	}
 
     [Header("ConnectedScripts")]
-    [SerializeField] private Rigidbody2D rgdbdAgent;
+    //[SerializeField] private Rigidbody2D rgdbdAgent;
 
     [Header("Settings")]
     [SerializeField] public BlackBoard bbHomeBoard;
@@ -76,28 +76,28 @@ public class AgentController : MonoBehaviour
     const float kfWanderUpdateTime = 0.5f;
     const int   kiTooManyHostiles = 2;
 
-    // Start is called before the first frame update
-    void Start()
-    {
-		if (dictOpponentAgentsNearby == null)
-		{
-			dictOpponentAgentsNearby = new Dictionary<GameObject, PrevPosition>(); 
-		}
-
-        if (rgdbdAgent == null)
-        {
-            rgdbdAgent = this.GetComponent<Rigidbody2D>();
-        }
-    }
-
+    /// <summary>
+    /// Just to make sure the collection is not null, and key variables
+    /// are in default values
+    /// </summary>
 	private void Awake()
 	{
         ChangeState(STATE.IDLE);
         objTarget = null;
         fDelayCounter = 0.0f;
+
+        if (dictOpponentAgentsNearby == null)
+        {
+            dictOpponentAgentsNearby = new Dictionary<GameObject, PrevPosition>();
+        }
+
+        //if (rgdbdAgent == null)
+        //{
+        //    rgdbdAgent = this.GetComponent<Rigidbody2D>();
+        //}
     }
-	// Update is called once per frame
-	void Update()
+    // Update is called once per frame
+    void Update()
     {
         if (fDelayCounter > 0)
         {
@@ -194,7 +194,6 @@ public class AgentController : MonoBehaviour
     public bool GetIfAttacking()
 	{
         return eCurrentState == STATE.ATTACK ? true : false;
-        //return bIsAttacking;
 	}
     
     public bool GetIfReturningHome()
@@ -249,13 +248,22 @@ public class AgentController : MonoBehaviour
 		}
 	}
 
+    /// <summary>
+    /// For intial setup. Setting the areas in the opponents area
+    /// </summary>
+    /// <param name="_inFlagArea"></param>
+    /// <param name="_inPrisonArea"></param>
+    /// <param name="_inHomeArea"></param>
     public void SetAreas(Vector2 _inFlagArea, Vector2 _inPrisonArea, Tilemap _inHomeArea)
 	{
         v2HostileFlagAreaPos = _inFlagArea;
         v2HostilePrisonAreaPos = _inPrisonArea;
         tlmpHomeArea = _inHomeArea;
 	}
-
+    /// <summary>
+    /// This agent was captured, inform the blackboard
+    /// and change its state. if it has a flag, return it
+    /// </summary>
     public void ImprisonThisAgent()
 	{
         bbHomeBoard.AttackFailed(this.gameObject);
@@ -270,7 +278,7 @@ public class AgentController : MonoBehaviour
 		}
 	}
     /// <summary>
-    /// blackboard will 
+    /// blackboard will call this to select an agent to send on an attack
     /// </summary>
     /// <returns></returns>
     public float DecideIfAttack()
@@ -282,17 +290,25 @@ public class AgentController : MonoBehaviour
 		float RandomScore = Random.Range(distanceToMiddle, (1.0f - distanceToMiddle));
 		return RandomScore; 
 	}
-
+    /// <summary>
+    /// Blackboard uses this to inform the agent an intruder was detected.
+    /// Agent may decide to attempt pursuit
+    /// </summary>
+    /// <param name="_inHostile"></param>
     public void DetectedIntruder(GameObject _inHostile)
 	{
         float distanceToIntruder = Vector2.Distance(_inHostile.transform.position, transform.position);
 
-        if(distanceToIntruder < (kfFleeDistance*2))
+        if(distanceToIntruder < (kfFleeDistance*4))
 		{
             bbHomeBoard.RequestToPursue(this.gameObject,_inHostile);
 		}
 	}
-
+    /// <summary>
+    /// Blackboard selected this agent to attack. Set the appropriate
+    /// target position after deciding if to rescue or steal
+    /// </summary>
+    /// <param name="_inCapturedFriends"></param>
     public void ApproveAttackRequest(bool _inCapturedFriends)
 	{
         int randomMode = _inCapturedFriends?Random.Range(0,10):10;
@@ -306,8 +322,12 @@ public class AgentController : MonoBehaviour
         }
         ChangeState(STATE.ATTACK);
     }
-
-
+    /// <summary>
+    /// Blackboard allows the pursuit request
+    /// GoTo the last know position of the hostile
+    /// </summary>
+    /// <param name="_inTargetHostile"></param>
+    /// <param name="_inPosition"></param>
     public void ApprovePursueRequest(GameObject _inTargetHostile,Vector2 _inPosition)
 	{
         objTarget = _inTargetHostile;
@@ -315,7 +335,10 @@ public class AgentController : MonoBehaviour
         v2TargetPosition = _inPosition;
         ChangeState(STATE.CHASE);
 	}
-
+    /// <summary>
+    /// Blackboard letting the agent know an intruder is captured/chased off
+    /// </summary>
+    /// <param name="_inHostile"></param>
     public void AnnouncedIntruderNonIssue(GameObject _inHostile)
 	{
         //Switch out from chase mode if the hostile was target and captured or escaped
@@ -552,13 +575,16 @@ public class AgentController : MonoBehaviour
 
 	private void OnTriggerEnter2D(Collider2D collision)
 	{
+        //If an agent as entered its flee radius....
 		if(collision.tag== "Agent" )
 		{
             AgentController collidedAgent = collision.gameObject.GetComponent<AgentController>();
             if (collidedAgent)
 			{
+                //and is of the opposing team
 				if (collidedAgent.bIsRedTeam != bIsRedTeam)
 				{
+                    //add to the list of nearby hostiles
 					if (!dictOpponentAgentsNearby.ContainsKey(collision.gameObject))
 					{
 						print("Hostile agent is close by and registered");
@@ -575,11 +601,13 @@ public class AgentController : MonoBehaviour
                         ChangeState(STATE.CHASE);
                     }
 
+                    //If it's the pursuit target, agent no longer needs to keep checking blackboard for the location
                     if(GetIfPursuing() && collision.gameObject == objTarget)
 					{
                         bTargetIntruderSighted = true;
 					}
                 }
+                //If it's the same team and is imprisoned, try to rescue it
 				else if(GetIfAttacking() && collidedAgent.bIsRedTeam == bIsRedTeam && collidedAgent.GetIfImprisoned())
 				{
                     print("Captive nearby");
@@ -587,10 +615,11 @@ public class AgentController : MonoBehaviour
                 } 
 			}
         }
+        //if it's a flag and the agent is not holding a flag and the flag is not alreay captured
         else if(GetIfAttacking() && collision.tag == "Flag" && !bHoldingFlag)
 		{
             Flag flag = collision.gameObject.GetComponent<Flag>();
-            if(flag)
+            if(flag && !flag.IsCaptured())
 			{
                 v2TargetPosition = flag.transform.position;
             }
@@ -655,7 +684,12 @@ public class AgentController : MonoBehaviour
             return false;
         }
     }
-
+    /// <summary>
+    /// Attacking is basically steering towards the target position 
+    /// and also calculatin flee force from nearby hostiles on hostile
+    /// territory. Much more weight is placed on fleeing force
+    /// </summary>
+    /// <returns></returns>
     private Vector2 Attack()
 	{
         Vector2 fleeForce = Vector2.zero;

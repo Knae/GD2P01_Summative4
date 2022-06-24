@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// Script to manage generating the flags and
+/// the positions they are moved to.
+/// </summary>
 public class FlagControl : MonoBehaviour
 {
     [Header("Settings")]
@@ -50,17 +54,24 @@ public class FlagControl : MonoBehaviour
 
         if(Input.GetKeyDown(KeyCode.Escape))
 		{
-            objEndGameMenu.SetActive(true);
+            objEndGameMenu.SetActive(!objEndGameMenu.activeInHierarchy);
             objEndGameMenu.GetComponent<EndGameText>().ExitMenu();
         }
 	}
 
+    /// <summary>
+    /// Alternate end game route if player gets all agents captured
+    /// </summary>
     public void RedHasNoAgents()
 	{
         objEndGameMenu.SetActive(true);
         objEndGameMenu.GetComponent<EndGameText>().EndGame(false);
     }
 
+    /// <summary>
+    /// Increment score, depending on the team
+    /// </summary>
+    /// <param name="_inIsRedTeam"></param>
 	public void IncrementScore(bool _inIsRedTeam)
 	{
 		if (_inIsRedTeam)
@@ -73,6 +84,13 @@ public class FlagControl : MonoBehaviour
 		}
 	}
 
+    /// <summary>
+    /// Generate a random position for where the flag will be spawned
+    /// Random range depended on which area to spawn in. True to spawn
+    /// in Red area
+    /// </summary>
+    /// <param name="_inIsRedArea"></param>
+    /// <returns></returns>
 	public Vector2 GeneratePositionInFlagArea(bool _inIsRedArea)
     {
         txtdispScore_Red.text = iScore_Red.ToString();
@@ -91,6 +109,9 @@ public class FlagControl : MonoBehaviour
         }
         return generatedPosition;
     }
+    /// <summary>
+    /// Function to generate the flags at the start of the game
+    /// </summary>
     private void PutDownFlags()
 	{
 

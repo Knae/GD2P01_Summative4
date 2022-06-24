@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// Script responsible for setting the appropriate end game message
+/// </summary>
 public class EndGameText : MonoBehaviour
 {
     public Text txtEndText;

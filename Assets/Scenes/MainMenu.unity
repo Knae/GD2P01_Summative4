@@ -762,11 +762,13 @@ MonoBehaviour:
 
     E - Switch to next agent
 
+    ESC - Esc Menu
 
-    Get the 4 flags
-    on the opposite side. You can only carry one at a time. AI can flee faster then
-    you can move. But the AI will abandon attacking upon detecting more than 2 opponents
-    nearby'
+
+    Get
+    the 4 flags on the opposite side. You can only carry one at a time. AI can flee
+    faster then you can move. But the AI will abandon attacking upon detecting more
+    than 2 opponents nearby'
 --- !u!222 &1083158742
 CanvasRenderer:
   m_ObjectHideFlags: 0
